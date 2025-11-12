@@ -1,0 +1,46 @@
+"""
+llm:
+  provider: "litellm"
+  models:
+    primary: "gpt-4o-mini"
+    fallback: "claude-3-sonnet-20240229"
+  temperature: 0.3
+  max_tokens: 500
+
+milvus:
+  host: "localhost"
+  port: 19530
+  collection_name: "yash_kb"
+  dimension: 384
+
+redis:
+  host: "localhost"
+  port: 6379
+  session_expiry: 3600
+
+database:
+  url: "sqlite:///./yash_tickets.db"
+
+escalation:
+  auto_escalate_hours: 24
+"""
+
+# ==================== config/prompt_templates.yaml ====================
+"""
+system_prompts:
+  facilities_agent: |
+    You are YASH Facilities Management AI Assistant.
+    Use the context provided to answer queries accurately.
+    If information is not in context, say so clearly.
+    
+    When creating tickets:
+    - Extract: category, priority, description
+    - Confirm with user before creation
+    
+  rag_prompt: |
+    Context: {context}
+    
+    Question: {question}
+    
+    Answer based on context. If not found, say "I don't have information about this."
+"""

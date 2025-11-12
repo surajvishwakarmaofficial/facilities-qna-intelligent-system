@@ -1,0 +1,33 @@
+# Core Framework
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.4.2
+python-dotenv==1.0.0
+
+# LLM & AI
+langchain==0.1.0
+langchain-openai==0.0.2
+langgraph==0.0.20
+litellm==1.17.0
+
+# Vector Database
+pymilvus==2.3.4
+# sentence-transformers==2.2.2
+
+# Database
+sqlalchemy==2.0.23
+alembic==1.12.1
+
+# Document Processing
+pypdf2==3.0.1
+python-multipart==0.0.6
+
+# Utilities
+pyyaml==6.0.1
+redis==5.0.1
+
+podman-compose==1.5.0
+
+passlib==1.7.4
+
+bcrypt
