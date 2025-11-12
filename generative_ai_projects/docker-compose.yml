@@ -1,0 +1,61 @@
+version: '3.8'
+services:
+  etcd:
+    container_name: milvus-etcd
+    image: quay.io/coreos/etcd:v3.5.5
+    environment:
+      - ETCD_USE_V3=true
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://0.0.0.0:2379
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/etcd:/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: always
+
+  minio:
+    container_name: milvus-minio
+    image: minio/minio:latest  # <--- FIX: Using generic stable tag
+    environment:
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/minio:/minio_data # <--- FIX: Correct volume path
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: always 
+
+  milvus:
+    container_name: milvus-standalone
+    image: milvusdb/milvus:v2.4.4
+    ports:
+      - "19530:19530" # The port your Python app connects to
+      - "9091:9091"
+    environment:
+      - MILVUS_ROOT_USER=root
+      - MILVUS_ROOT_PASSWORD=Milvus
+      - MILVUS_ETCD_ENDPOINTS=etcd:2379
+      - MILVUS_MINIO_ENDPOINT=minio:9000
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/milvus:/var/lib/milvus
+    depends_on:
+      - etcd
+      - minio
+    healthcheck:
+      test: ["CMD", "/bin/bash", "-c", "curl -f http://localhost:9091/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: always
+    command: ["milvus", "run", "standalone"]
+    
