@@ -37,9 +37,17 @@ from src.database.session import DatabaseManager
 from src.database.models import User, Ticket, Base
 import dotenv
 import bcrypt
+import litellm
 
+litellm.set_verbose = True
 
 dotenv.load_dotenv()
+
+ESCALATION_MODE = os.getenv("ESCALATION_MODE", "TEST")  # TEST = 2 min, PROD = 24 hours
+ESCALATION_THRESHOLD = 0.033 if ESCALATION_MODE == "TEST" else 24  # hours
+CHECK_INTERVAL = 30 if ESCALATION_MODE == "TEST" else 3600  # seconds
+
+print(f"ESCALATION MODE: {ESCALATION_MODE} | Threshold: {ESCALATION_THRESHOLD}h | Check every: {CHECK_INTERVAL}s")
 
 app = FastAPI(title="YASH Facilities AI API")
 
@@ -178,32 +186,67 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     }
 
 
-# AUTO-ESCALATION ENGINE (GENAI + RULES)
+from litellm import completion  # ← ADD THIS AT TOP
+import os
 async def auto_escalate_tickets():
+    print(f"AUTO-ESCALATION ENGINE STARTED → {ESCALATION_MODE} MODE")
     while True:
-        await asyncio.sleep(60)
+        await asyncio.sleep(CHECK_INTERVAL)
         db = db_manager.get_session()
-        tickets = db.query(Ticket).filter(Ticket.status == "Open").all()
-        
-        for t in tickets:
-            hours = (datetime.utcnow() - t.created_at).total_seconds() / 3600
-            if hours > 24 and not t.escalated:
-                prompt = f"Ticket {t.ticket_id}: {t.description}\nPending: {hours:.1f}h\nEscalate? Reply YES/NO + reason."
-                decision = llm_client.generate(prompt)
-                if "YES" in decision.upper():
-                    t.escalated = True
-                    t.priority = "Critical"
-                    t.status = "Escalated"
-                    db.commit()
-                    print(f"AUTO-ESCALATED: {t.ticket_id} | {decision}")
+        try:
+            tickets = db.query(Ticket).filter(Ticket.status == "Open").all()
+            now = datetime.utcnow()
+            print(f"Checking {len(tickets)} open tickets...")
 
-app.add_event_handler("startup", lambda: asyncio.create_task(auto_escalate_tickets()))
+            for t in tickets:
+                hours = (now - t.created_at).total_seconds() / 3600
+                print(f"Ticket {t.ticket_id} | Age: {hours:.3f}h | Threshold: {ESCALATION_THRESHOLD}h")
 
+                if hours > ESCALATION_THRESHOLD and not t.escalated:
+                    prompt = f"Ticket {t.ticket_id}: {t.description}\nPending: {hours:.1f}h\nEscalate now? Reply YES or NO only."
+
+                    try:
+                        response = await completion(
+                        model="gemini/gemini-2.5-flash",
+                        messages=[
+                            {"role": "system", "content": "Reply with only: YES or NO"},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.0,
+                        max_output_tokens=20,   # ← CHANGE THIS
+                        api_key=os.getenv("GEMINI_API_KEY")
+                        )
+                        decision = response.choices[0].message.content.strip()
+                        print(f"AI Decision: {decision}")
+
+                        if "YES" in decision.upper():
+                            t.escalated = True
+                            t.priority = "Critical"
+                            t.status = "Escalated"
+                            db.commit()
+                            db.refresh(t)
+                            print(f"AUTO-ESCALATED: {t.ticket_id} → ESCALATED!")
+                        else:
+                            print(f"AI said NO → Staying Open")
+
+                    except Exception as e:
+                        print(f"LLM ERROR: {e}")
+                else:
+                    if t.escalated:
+                        print(f"Already escalated: {t.ticket_id}")
+                    else:
+                        print(f"Not old enough: {hours:.3f}h < {ESCALATION_THRESHOLD}h")
+
+        except Exception as e:
+            print(f"ESCALATION LOOP ERROR: {e}")
+        finally:
+            db.close()
 
 @app.on_event("startup")
 async def startup_event():
     await create_default_admin()
     asyncio.create_task(auto_escalate_tickets())
+    print("Auto-escalation task scheduled!")
 
 # Models & Endpoints (same as before)
 class QueryRequest(BaseModel): user_id: str; query: str; session_id: Optional[str] = None
