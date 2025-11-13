@@ -19,7 +19,7 @@ redis:
   session_expiry: 3600
 
 database:
-  url: "sqlite:///./yash_tickets.db"
+  url: "sqlite:///./facility_intelligent_system.db"
 
 escalation:
   auto_escalate_hours: 24

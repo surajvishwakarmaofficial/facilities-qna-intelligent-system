@@ -67,7 +67,7 @@ vector_store = MilvusStore(
 
 retriever = KnowledgeRetriever(vector_store, llm_client)
 agent = FacilitiesAgent(llm_client, retriever)
-db_manager = DatabaseManager("sqlite:///./yash_tickets.db")
+db_manager = DatabaseManager("sqlite:///./facility_intelligent_system.db")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
