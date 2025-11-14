@@ -1,5 +1,4 @@
 import os
-import tempfile
 from typing import List, Dict
 import streamlit as st
 from pymilvus import connections, utility
@@ -7,6 +6,7 @@ from langchain_community.vectorstores import Milvus
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from langchain_community.document_loaders import PyPDFLoader
+import pathlib
 
 from src.llm.clients import setup_llm_clients
 import dotenv
@@ -17,8 +17,8 @@ COLLECTION_NAME = os.environ.get("COLLECTION_NAME")
 MILVUS_URI = os.environ.get("MILVUS_URI")
 MILVUS_TOKEN = os.environ.get("MILVUS_TOKEN")
 
-PDF_PATH = r"D:\PROJECT\capstone_project\MAIN\facilities-qna-intelligent-system\generative_ai_projects\data\knowledge_base.pdf"
-
+PROJECT_ROOT = pathlib.Path(__file__).parent.parent.parent
+candidate_path = PROJECT_ROOT / "generative_ai_projects" / "data" / "knowledge_base.pdf"
 
 class FacilitiesRAGSystem:
     """RAG System for Facilities Management"""
@@ -43,7 +43,7 @@ class FacilitiesRAGSystem:
 
             if utility.has_collection(self.collection_name):
                 utility.drop_collection(self.collection_name)
-                st.info(f"Cleaned existing collection: {self.collection_name}")
+                st.info(f"✅ Collection Activated")
 
             self.vectorstore = Milvus(
                 embedding_function=self.embedding_function,
@@ -59,9 +59,17 @@ class FacilitiesRAGSystem:
     def load_knowledge_base(self):
         """Load knowledge base from the specified PDF file into vector database."""
         try:
-            if not os.path.exists(PDF_PATH):
-                st.error(f"PDF file not found at {PDF_PATH}")
+
+            PROJECT_ROOT = pathlib.Path(__file__).parent.parent.parent
+            candidate_path = PROJECT_ROOT / "generative_ai_projects" / "data" / "knowledge_base.pdf"
+            
+            if not candidate_path.exists():
+                st.error(f"PDF not found at: {candidate_path}")
+                st.info("Please ensure you have uploaded the file")
                 return False
+            
+            PDF_PATH = str(candidate_path)
+            st.info(f"✅ File is processing to upload")
 
             loader = PyPDFLoader(PDF_PATH)
             documents = loader.load()
@@ -86,7 +94,7 @@ class FacilitiesRAGSystem:
                 drop_old=True
             )
 
-            st.success(f"✅ Loaded {len(splits)} chunks from {os.path.basename(PDF_PATH)} into vector database")
+            st.success(f"✅ Loaded {len(splits)} chunks from into vector database")
             return True
         except Exception as e:
             st.error(f"Error loading knowledge base: {str(e)}")
