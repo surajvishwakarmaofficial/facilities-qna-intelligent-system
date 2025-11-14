@@ -7,7 +7,7 @@ class MilvusStore:
     def __init__(self, uri: str, token: str, collection_name: str = "yash_kb"):
         self.collection_name = collection_name
         self.client = MilvusClient(uri=uri, token=token, timeout=60)
-        print("Connected to Zilliz Cloud!")
+        # print("Connected to Zilliz Cloud!")
 
         if self.collection_name not in self.client.list_collections():
             print(f"Creating collection: {self.collection_name}")
@@ -18,9 +18,9 @@ class MilvusStore:
                 auto_id=True,
                 enable_dynamic_field=True  # THIS IS THE KEY FOR SERVERLESS
             )
-            print("Collection created with dynamic fields.")
+            # print("Collection created with dynamic fields.")
 
-        print("Collection loaded.")
+        # print("Collection loaded.")
 
     def add_documents(self, texts: List[str], embeddings: List[List[float]], metadatas: List[dict]):
         data = [

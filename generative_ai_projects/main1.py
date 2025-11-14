@@ -343,8 +343,8 @@ def login_page():
         # LOGIN TAB
         with tab1:
             with st.form("login_form", clear_on_submit=False):
-                st.markdown("### Welcome Back! 👋")
-                st.markdown("Sign in to access your dashboard")
+                # st.markdown("### Welcome Back! 👋")
+                # st.markdown("Sign in to access your dashboard")
                 
                 username = st.text_input(
                     "Username",
