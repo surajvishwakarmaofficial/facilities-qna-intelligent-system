@@ -787,8 +787,234 @@ def process_message(prompt):
     })
 
 
+def settings_page():
+    """User settings and preferences page"""
+    st.markdown("### ⚙️ Settings & Preferences")
+    
+    tab1, tab2, tab3 = st.tabs(["👤 Profile", "🎨 Appearance", "🔔 Notifications"])
+    
+    with tab1:
+        st.markdown("#### Profile Information")
+        user = st.session_state.user_data
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.text_input("Full Name", value=user['full_name'], disabled=True)
+            st.text_input("Username", value=user['username'], disabled=True)
+        with col2:
+            st.text_input("Email", value=user['email'], disabled=True)
+            st.text_input("Member Since", value=datetime.now().strftime('%B %Y'), disabled=True)
+        
+        st.markdown("---")
+        st.markdown("#### Change Password")
+        
+        with st.form("change_password"):
+            current_pwd = st.text_input("Current Password", type="password")
+            new_pwd = st.text_input("New Password", type="password")
+            confirm_pwd = st.text_input("Confirm New Password", type="password")
+            
+            if st.form_submit_button("Update Password"):
+                if new_pwd == confirm_pwd and len(new_pwd) >= 8:
+                    st.success("✅ Password updated successfully!")
+                else:
+                    st.error("❌ Passwords don't match or too short")
+    
+    with tab2:
+        st.markdown("#### Display Settings")
+        theme = st.selectbox("Theme", ["Light", "Dark", "Auto"])
+        font_size = st.slider("Font Size", 12, 20, 14)
+        
+        st.markdown("#### Chat Preferences")
+        show_timestamps = st.checkbox("Show message timestamps", value=True)
+        enable_sound = st.checkbox("Enable notification sounds", value=False)
+        
+        if st.button("Save Appearance Settings"):
+            st.success("✅ Settings saved!")
+    
+    with tab3:
+        st.markdown("#### Notification Preferences")
+        
+        email_notif = st.checkbox("Email notifications", value=True)
+        push_notif = st.checkbox("Push notifications", value=False)
+        
+        st.markdown("#### Notification Types")
+        st.checkbox("System updates", value=True)
+        st.checkbox("New features", value=True)
+        st.checkbox("Security alerts", value=True)
+        
+        if st.button("Save Notification Settings"):
+            st.success("✅ Notification preferences saved!")
+
+
+def analytics_page():
+    """Analytics and usage statistics page"""
+    st.markdown("### 📊 Analytics Dashboard")
+    
+    # Mock data for demonstration
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Total Queries", "156", "+12%")
+    with col2:
+        st.metric("Avg Response Time", "1.2s", "-0.3s")
+    with col3:
+        st.metric("User Satisfaction", "94%", "+5%")
+    
+    st.markdown("---")
+    
+    # Usage chart placeholder
+    st.markdown("#### 📈 Usage Trends")
+    st.info("📊 Analytics charts will be displayed here with actual usage data")
+    
+    # Most asked questions
+    st.markdown("#### 🔥 Top Questions This Week")
+    top_questions = [
+        ("How do I book a conference room?", 45),
+        ("What are the parking policies?", 38),
+        ("Gym access and timings?", 32),
+        ("IT support contact?", 28),
+        ("Cafeteria menu?", 24)
+    ]
+    
+    for question, count in top_questions:
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            st.markdown(f"**{question}**")
+        with col2:
+            st.markdown(f"`{count} asks`")
+        st.progress(count / 50)
+
+
+def help_center():
+    """Help center and documentation"""
+    st.markdown("### 📚 Help Center")
+    
+    tab1, tab2, tab3 = st.tabs(["❓ FAQ", "📖 Guide", "💬 Support"])
+    
+    with tab1:
+        st.markdown("#### Frequently Asked Questions")
+        
+        faqs = [
+            ("How do I initialize the knowledge base?", 
+             "Click the '🚀 Initialize Knowledge Base' button in the sidebar to activate the RAG system."),
+            ("Can I upload multiple documents?", 
+             "Yes! You can upload multiple PDF documents. Each will be processed and added to the knowledge base."),
+            ("How accurate are the responses?", 
+             "Responses are based on your uploaded documents and AI analysis. Always verify critical information."),
+            ("Is my data secure?", 
+             "Yes! All data is encrypted and stored securely. Your documents are only accessible to you."),
+            ("How do I export my chat history?", 
+             "Use the '💾 Export Chat' button in the sidebar to download your conversations as JSON.")
+        ]
+        
+        for question, answer in faqs:
+            with st.expander(question):
+                st.markdown(answer)
+    
+    with tab2:
+        st.markdown("#### User Guide")
+        
+        st.markdown("""
+        **Getting Started:**
+        1. 🔐 Login or create an account
+        2. 🚀 Initialize the knowledge base
+        3. 📤 Upload your policy documents (optional)
+        4. 💬 Start asking questions!
+        
+        **Features:**
+        - **RAG System**: Upload documents for context-aware responses
+        - **Chat History**: All conversations are saved
+        - **Source Citations**: See where information comes from
+        - **Export Data**: Download your chat history
+        
+        **Tips for Best Results:**
+        - Be specific in your questions
+        - Upload relevant policy documents
+        - Use the sample questions as templates
+        - Check source citations for verification
+        """)
+    
+    with tab3:
+        st.markdown("#### Contact Support")
+        
+        with st.form("support_form"):
+            support_type = st.selectbox(
+                "Issue Type",
+                ["Technical Issue", "Feature Request", "Bug Report", "General Inquiry"]
+            )
+            subject = st.text_input("Subject")
+            message = st.text_area("Describe your issue", height=150)
+            priority = st.select_slider("Priority", ["Low", "Medium", "High", "Critical"])
+            
+            if st.form_submit_button("Submit Support Ticket"):
+                st.success("✅ Support ticket submitted! We'll get back to you soon.")
+
+
+def admin_panel():
+    """Admin panel for system management (demo)"""
+    st.markdown("### 🛠️ Admin Panel")
+    
+    st.warning("⚠️ This is a demo admin panel. Real implementation would require proper authentication.")
+    
+    tab1, tab2, tab3 = st.tabs(["👥 Users", "📊 System", "🔧 Config"])
+    
+    with tab1:
+        st.markdown("#### User Management")
+        
+        # Mock user data
+        users_data = [
+            {"name": "John Doe", "email": "john@company.com", "role": "User", "status": "Active"},
+            {"name": "Jane Smith", "email": "jane@company.com", "role": "Admin", "status": "Active"},
+            {"name": "Bob Wilson", "email": "bob@company.com", "role": "User", "status": "Inactive"}
+        ]
+        
+        for user in users_data:
+            col1, col2, col3, col4, col5 = st.columns([2, 2, 1, 1, 1])
+            with col1:
+                st.write(user['name'])
+            with col2:
+                st.write(user['email'])
+            with col3:
+                st.write(user['role'])
+            with col4:
+                st.write(user['status'])
+            with col5:
+                st.button("Edit", key=f"edit_{user['email']}")
+    
+    with tab2:
+        st.markdown("#### System Health")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("System Uptime", "99.9%")
+            st.metric("Active Users", "42")
+        with col2:
+            st.metric("API Response Time", "145ms")
+            st.metric("Error Rate", "0.02%")
+        
+        st.markdown("---")
+        st.markdown("#### System Logs")
+        st.code("""
+[2025-11-14 10:23:45] INFO: User login successful
+[2025-11-14 10:24:12] INFO: RAG system initialized
+[2025-11-14 10:25:33] INFO: Document processed: policy.pdf
+[2025-11-14 10:26:01] INFO: Query processed successfully
+        """)
+    
+    with tab3:
+        st.markdown("#### System Configuration")
+        
+        max_upload_size = st.number_input("Max Upload Size (MB)", value=10)
+        session_timeout = st.number_input("Session Timeout (minutes)", value=30)
+        enable_analytics = st.checkbox("Enable Analytics", value=True)
+        enable_logging = st.checkbox("Enable Detailed Logging", value=True)
+        
+        if st.button("Save Configuration"):
+            st.success("✅ Configuration saved!")
+
+
 def main():
-    """Main application entry point"""
+    """Main application entry point with enhanced navigation"""
     st.set_page_config(
         page_title="Facilities Management AI Assistant",
         page_icon="🏢",
@@ -802,6 +1028,7 @@ def main():
         st.session_state.username = ""
         st.session_state.user_data = None
         st.session_state.docs_processed = 0
+        st.session_state.current_page = "dashboard"
     
     initialize_session_state()
     
@@ -809,7 +1036,36 @@ def main():
     if not st.session_state.logged_in:
         login_page()
     else:
-        dashboard()
+        # Navigation menu (only shown when logged in)
+        with st.sidebar:
+            st.markdown("---")
+            st.markdown("### 🧭 Navigation")
+            
+            pages = {
+                "🏠 Dashboard": "dashboard",
+                "📊 Analytics": "analytics",
+                "⚙️ Settings": "settings",
+                "📚 Help Center": "help",
+                "🛠️ Admin Panel": "admin"
+            }
+            
+            for page_name, page_id in pages.items():
+                if st.button(page_name, use_container_width=True, 
+                           type="primary" if st.session_state.current_page == page_id else "secondary"):
+                    st.session_state.current_page = page_id
+                    st.rerun()
+        
+        # Render the selected page
+        if st.session_state.current_page == "dashboard":
+            dashboard()
+        elif st.session_state.current_page == "analytics":
+            analytics_page()
+        elif st.session_state.current_page == "settings":
+            settings_page()
+        elif st.session_state.current_page == "help":
+            help_center()
+        elif st.session_state.current_page == "admin":
+            admin_panel()
 
 
 if __name__ == "__main__":
