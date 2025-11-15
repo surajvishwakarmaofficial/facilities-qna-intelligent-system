@@ -140,7 +140,9 @@ async def create_default_users():
                 username=user_data["username"],
                 email=user_data["email"],
                 full_name=user_data["full_name"],
-                hashed_password=hashed
+                hashed_password=hashed,
+                role=user_data["role"],
+                
             )
             db.add(new_user)
             db.commit()
@@ -160,6 +162,7 @@ class UserResponse(BaseModel):
     username: str
     email: str
     full_name: Optional[str] = None
+    role: str
 
 class LoginResponse(BaseModel):
     user: UserResponse
@@ -199,7 +202,9 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
             "id": user.id,
             "username": user.username,
             "email": user.email,
-            "full_name": user.full_name
+            "full_name": user.full_name,
+            "role": user.role,
+
         },
         "access_token": access_token,
         "token_type": "bearer",
