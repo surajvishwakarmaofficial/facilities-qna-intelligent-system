@@ -734,7 +734,7 @@ def login_page():
         """, unsafe_allow_html=True)
 
 def dashboard():
-    """Enhanced main dashboard with modern UI"""
+    """Main dashboard"""
     user = st.session_state.user_data
     
     # Top Header Bar
@@ -749,6 +749,7 @@ def dashboard():
                         <div class="user-details">
                             <span>👤 {user['username']}</span>
                             <span>📧 {user['email']}</span>
+                            <span>🛡️ {user['role']}</span>
                             <span>🕒 {datetime.now().strftime('%B %d, %Y • %I:%M %p')}</span>
                         </div>
                     </div>
@@ -809,169 +810,135 @@ def dashboard():
             </div>
         """, unsafe_allow_html=True)
     
-    # Enhanced Sidebar
+    # Minimal Sidebar with Dynamic Initialization
     with st.sidebar:
-        st.markdown("### ⚡ Quick Actions")
+        st.markdown("### ⚡ System Control")
         
-        # Initialize System Button
+        # Initialize System Button with Progress
         if not st.session_state.system_initialized:
             if st.button("🚀 Initialize Knowledge Base", type="primary", use_container_width=True):
-                with st.spinner("🔄 Initializing RAG system..."):
+                # Progress tracking
+                progress_placeholder = st.empty()
+                status_placeholder = st.empty()
+                
+                steps = [
+                    ("Connecting to Milvus...", 0),
+                    ("Loading embeddings...", 25),
+                    ("Processing knowledge base...", 50),
+                    ("Building vector index...", 75),
+                    ("Finalizing system...", 90),
+                    ("System ready!", 100)
+                ]
+                
+                with st.spinner("🔄 Initializing RAG System..."):
                     rag_system = FacilitiesRAGSystem()
+                    
+                    # Step 1: Initialize clients
+                    status_placeholder.info(f"🔄 {steps[0][0]}")
+                    progress_placeholder.progress(steps[0][1])
+                    time.sleep(0.5)
+                    
                     if rag_system.initialize_clients():
+                        status_placeholder.info(f"✅ {steps[1][0]}")
+                        progress_placeholder.progress(steps[1][1])
+                        time.sleep(0.5)
+                        
+                        # Step 2: Load knowledge base
+                        status_placeholder.info(f"🔄 {steps[2][0]}")
+                        progress_placeholder.progress(steps[2][1])
+                        time.sleep(0.5)
+                        
                         if rag_system.load_knowledge_base():
+                            status_placeholder.info(f"✅ {steps[3][0]}")
+                            progress_placeholder.progress(steps[3][1])
+                            time.sleep(0.5)
+                            
+                            status_placeholder.info(f"🔄 {steps[4][0]}")
+                            progress_placeholder.progress(steps[4][1])
+                            time.sleep(0.5)
+                            
+                            # Success
                             st.session_state.rag_system = rag_system
                             st.session_state.system_initialized = True
-                            st.success("🎉 System ready!")
+                            
+                            progress_placeholder.progress(steps[5][1])
+                            status_placeholder.success(f"✅ {steps[5][0]}")
+                            st.balloons()
+                            time.sleep(1.5)
                             st.rerun()
                         else:
-                            st.error("❌ Failed to load knowledge base")
+                            progress_placeholder.empty()
+                            status_placeholder.error("❌ Failed to load knowledge base")
                     else:
-                        st.error("❌ Failed to initialize RAG system")
+                        progress_placeholder.empty()
+                        status_placeholder.error("❌ Failed to initialize system")
         else:
-            st.success("✅ System Initialized")
+            # System Ready Status
+            st.markdown("""
+                <div style="background: linear-gradient(135deg, #d4edda, #c3e6cb); 
+                            padding: 1rem; border-radius: 12px; text-align: center;
+                            border: 2px solid #28a745; margin-bottom: 1rem;">
+                    <div style="font-size: 2rem; margin-bottom: 0.5rem;">✅</div>
+                    <div style="color: #155724; font-weight: 700; font-size: 1.1rem;">
+                        System Ready
+                    </div>
+                    <div style="color: #155724; font-size: 0.85rem; margin-top: 0.3rem;">
+                        AI-powered responses active
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
         
         st.markdown("---")
         
-        # File Upload Section
-        st.markdown("### 📤 Upload Documents")
-        uploaded_file = st.file_uploader(
-            "Upload PDF Policy Documents",
-            type=["pdf", "csv", "xlsx", "xls", "txt"],
-            disabled=not st.session_state.system_initialized,
-            help="Upload company policy documents for analysis",
-
-        )
-       
-        if uploaded_file and st.session_state.system_initialized:
-            file_identifier = (uploaded_file.name, uploaded_file.size)
-            if st.session_state.processed_file_id != file_identifier:
-                with st.spinner(f"📄 Processing {uploaded_file.name}..."):
-                    if st.session_state.rag_system.process_file(uploaded_file):
-                        st.session_state.processed_file_id = file_identifier
-                        st.session_state.docs_processed += 1
-                        st.success(f"✅ {uploaded_file.name} processed!")
-                        time.sleep(1)
-                        st.rerun()
-        
-        st.markdown("---")
-        
-        # System Information
-        st.markdown("### 📊 System Info")
-        
+        # File Upload Section (only if system is ready)
         if st.session_state.system_initialized:
-            st.markdown("""
-                <div class="feature-card">
-                    <div style="color: #28a745; font-weight: 600;">
-                        🟢 RAG System Active
-                    </div>
-                    <div style="font-size: 0.85rem; color: #666; margin-top: 0.5rem;">
-                        AI-powered responses enabled
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown("""
-                <div class="feature-card">
-                    <div style="color: #ffc107; font-weight: 600;">
-                        🟡 RAG System Inactive
-                    </div>
-                    <div style="font-size: 0.85rem; color: #666; margin-top: 0.5rem;">
-                        General chat mode only
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
+            st.markdown("### 📤 Upload Documents")
+            uploaded_file = st.file_uploader(
+                "Upload Documents",
+                type=["pdf", "csv", "xlsx", "xls", "txt"],
+                help="Upload documents in PDF, CSV, Excel, or TXT format"
+            )
+           
+            if uploaded_file:
+                file_identifier = (uploaded_file.name, uploaded_file.size)
+                if st.session_state.processed_file_id != file_identifier:
+                    with st.spinner(f"📄 Processing {uploaded_file.name}..."):
+                        if st.session_state.rag_system.process_file(uploaded_file):
+                            st.session_state.processed_file_id = file_identifier
+                            st.session_state.docs_processed += 1
+                            st.success(f"✅ {uploaded_file.name} processed!")
+                            time.sleep(1)
+                            st.rerun()
+            
+            st.markdown("---")
         
-        st.markdown("---")
-        
-        # Available Topics
-        st.markdown("### 📚 Knowledge Base")
-        topics = [
-            ("🅿️", "Parking Policies"),
-            ("🏛️", "Conference Rooms"),
-            ("💪", "Gym & Wellness"),
-            ("🍽️", "Cafeteria Services"),
-            ("💻", "IT Support"),
-            ("🚨", "Emergency Protocols"),
-            ("📮", "Mail Services"),
-            ("🔐", "Building Security")
-        ]
-        
-        for icon, topic in topics:
-            st.markdown(f"""
-                <div style="background: #f8f9fa; padding: 0.5rem; 
-                            border-radius: 8px; margin-bottom: 0.5rem;
-                            border-left: 3px solid #667eea;">
-                    {icon} {topic}
-                </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        # Action Buttons
-        col_a, col_b = st.columns(2)
-        with col_a:
+        # Action Buttons (only if system is ready)
+        if st.session_state.system_initialized:
             if st.button("🗑️ Clear Chat", use_container_width=True):
                 st.session_state.messages = []
                 if st.session_state.rag_system:
                     st.session_state.rag_system.chat_history = []
                 st.rerun()
         
-        # Export Chat
-        if len(st.session_state.messages) > 0:
-            st.markdown("---")
-            if st.button("💾 Export Chat", use_container_width=True):
-                chat_export = json.dumps(st.session_state.messages, indent=2)
-                st.download_button(
-                    label="📥 Download JSON",
-                    data=chat_export,
-                    file_name=f"chat_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                    mime="application/json",
-                    use_container_width=True
-                )
+            # Export Chat (only if messages exist)
+            if len(st.session_state.messages) > 0:
+                st.markdown("---")
+                if st.button("💾 Export Chat", use_container_width=True):
+                    chat_export = json.dumps(st.session_state.messages, indent=2)
+                    st.download_button(
+                        label="📥 Download JSON",
+                        data=chat_export,
+                        file_name=f"chat_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                        mime="application/json",
+                        use_container_width=True
+                    )
     
-    # Main Chat Interface
-    st.markdown("""
-        <div class="chat-container">
-            <div class="chat-title">
-                <span>💬</span> Facilities Management Assistant
-            </div>
-            <p style="color: #666; margin-bottom: 2rem;">
-                Ask me anything about office amenities, policies, and procedures!
-            </p>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # Sample Questions (if not initialized)
-    if not st.session_state.system_initialized and len(st.session_state.messages) == 0:
-        st.info("💡 **Tip:** Initialize the knowledge base for policy-specific answers, or chat for general conversation!")
-        
-        st.markdown("### 🎯 Try These Questions:")
-        col1, col2 = st.columns(2)
-        
-        sample_questions = [
-            "What are the parking policies?",
-            "How do I book a conference room?",
-            "What are the gym timings?",
-            "How do I get IT support?",
-            "What's the cafeteria menu?",
-            "Emergency evacuation procedures?"
-        ]
-        
-        for i, question in enumerate(sample_questions):
-            with col1 if i % 2 == 0 else col2:
-                if st.button(f"💭 {question}", key=f"sample_{i}", use_container_width=True):
-                    st.session_state.sample_question = question
-                    st.rerun()
-    
-    # Handle sample question click
     if hasattr(st.session_state, 'sample_question'):
         prompt = st.session_state.sample_question
         delattr(st.session_state, 'sample_question')
         process_message(prompt)
         st.rerun()
     
-    # Display Chat History
     for idx, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
@@ -988,11 +955,12 @@ def dashboard():
                             </div>
                         """, unsafe_allow_html=True)
     
-    # Chat Input
-    if prompt := st.chat_input("💬 Type your message here...", key="chat_input"):
-        process_message(prompt)
-        st.rerun()
-
+    if st.session_state.system_initialized:
+        if prompt := st.chat_input("💬 Type your message here...", key="chat_input"):
+            process_message(prompt)
+            st.rerun()
+    else:
+        st.chat_input("💬 Initialize system to start chatting...", key="chat_input_disabled", disabled=True)
 
 def process_message(prompt):
     """Process and respond to user message"""

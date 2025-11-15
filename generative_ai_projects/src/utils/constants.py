@@ -9,30 +9,40 @@ PREDEFINED_USERS = [
         "email": os.getenv("ADMIN_EMAIL", "admin@yopmail.com"),
         "full_name": os.getenv("ADMIN_FULL_NAME", "System Administrator"),
         "password": os.getenv("ADMIN_PASSWORD", "admin2025"),
+        "role": "admin",
+        
     },
     {
         "username": "hr",
         "email": "hr@yopmail.com",
         "full_name": "HR Manager",
         "password": "hrmanager2025",
+        "role": "hr"
     },
     {
         "username": "staff",
         "email": "staff@yopmail.com",
         "full_name": "Staff Member",
         "password": "staff2025",
+        "role": "staff"
+
     },
     {
         "username": "it",
         "email": "it@yopmail.com",
         "full_name": "IT Support",
         "password": "itsupport2025",
+        "role": "it",
+
+
     },
     {
         "username": "user",
         "email": "user@yopmail.com",
         "full_name": "Regular User",
         "password": "user2025",
+        "role": "user"
+
     },
 
 ]
