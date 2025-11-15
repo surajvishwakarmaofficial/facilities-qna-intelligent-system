@@ -25,6 +25,10 @@ from src.database.models import User, Ticket, Base
 import bcrypt
 import litellm
 from config.constant_config import Config
+from src.utils.constants import (
+    PREDEFINED_USERS,
+    
+)
 
 litellm.set_verbose = True
 
@@ -115,36 +119,36 @@ class LoginRequest(BaseModel):
 
 
 @app.on_event("startup")
-async def create_default_admin():
+async def create_default_users():
     db = db_manager.get_session()
     try:
-        admin_username = os.getenv("ADMIN_USERNAME", "")
-        admin_email = os.getenv("ADMIN_EMAIL", "")
-        admin_password = os.getenv("ADMIN_PASSWORD", "")
-        admin_full_name = os.getenv("ADMIN_FULL_NAME", "")
+        for user_data in PREDEFINED_USERS:
+            existing_user = db.query(User).filter(
+                (User.username == user_data["username"]) | 
+                (User.email == user_data["email"])
+            ).first()
 
-        existing_user = db.query(User).filter(
-            (User.username == admin_username) | (User.email == admin_email)
-        ).first()
+            if existing_user:
+                continue
+            
+            if len(user_data["password"]) < 8:
+                print(f"✗ Password for '{user_data['username']}' too short (min 8 chars)")
+                continue
 
-        if existing_user:
-            True
-        else:
-            if len(admin_password) < 8:
-                print(f"Password must be min 8 characters! Current: {len(admin_password)}")
-                admin_password = ""
-
-            hashed = get_password_hash(admin_password)
-            admin_user = User(
-                username=admin_username,
-                email=admin_email,
-                full_name=admin_full_name,
+            hashed = get_password_hash(user_data["password"])
+            new_user = User(
+                username=user_data["username"],
+                email=user_data["email"],
+                full_name=user_data["full_name"],
                 hashed_password=hashed
             )
-            db.add(admin_user)
+            db.add(new_user)
             db.commit()
+            print(f"✓ Created user: '{user_data['username']}'")
+            
     except Exception as e:
-        print(f"Failed to create user: {e}")
+        print(f"✗ Failed to create users: {e}")
+        db.rollback()
     finally:
         db.close()
 
@@ -205,7 +209,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
 
 @app.on_event("startup")
 async def startup_event():
-    await create_default_admin()
+    await create_default_users()
 
 # Models & Endpoints (same as before)
 class QueryRequest(BaseModel): user_id: str; query: str; session_id: Optional[str] = None

@@ -321,46 +321,343 @@ def show_notification(message, type="info"):
 
 
 def login_page():
-    """Enhanced login and registration page"""
+    """Neon minimalist login card design"""
     
-    # Center the auth container
-    col1, col2, col3 = st.columns([1, 3, 1])
+    if 'show_register' not in st.session_state:
+        st.session_state.show_register = False
+    
+    st.markdown("""
+        <style>
+        /* Dark background */
+        .stApp {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+        }
+        
+        /* Hide Streamlit elements */
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+        
+        /* Neon card container */
+        .neon-card {
+            background: rgba(26, 28, 36, 0.95);
+            border-radius: 16px;
+            padding: 1.5rem 2rem;
+            box-shadow: 0 8px 32px rgba(0, 255, 255, 0.1),
+                        0 0 60px rgba(0, 255, 255, 0.05);
+            border: 1px solid rgba(0, 255, 255, 0.2);
+            max-width: 400px;
+            margin: 0 auto;
+            backdrop-filter: blur(10px);
+        }
+        
+        /* Logo/Icon */
+        .neon-icon {
+            text-align: center;
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #00fff5 0%, #0099ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 20px rgba(0, 255, 255, 0.5));
+        }
+        
+        /* Title */
+        .neon-title {
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 0.3rem;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+        
+        /* Subtitle */
+        .neon-subtitle {
+            text-align: center;
+            color: #8a8a9e;
+            font-size: 0.85rem;
+            margin-bottom: 1.2rem;
+        }
+        
+        /* Input styling */
+        .stTextInput > div > div > input {
+            background: rgba(42, 44, 56, 0.8) !important;
+            border: 1px solid rgba(0, 255, 255, 0.2) !important;
+            border-radius: 8px !important;
+            color: #ffffff !important;
+            padding: 0.5rem 0.75rem !important;
+            font-size: 0.85rem !important;
+            transition: all 0.3s ease !important;
+            height: 38px !important;
+        }
+        
+        .stTextInput > div > div > input:focus {
+            border: 1px solid rgba(0, 255, 255, 0.6) !important;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.2) !important;
+            outline: none !important;
+        }
+        
+        .stTextInput > label {
+            color: #00fff5 !important;
+            font-size: 0.75rem !important;
+            font-weight: 500 !important;
+            margin-bottom: 0.3rem !important;
+        }
+        
+        /* Button styling */
+        .stButton > button {
+            background: linear-gradient(135deg, #00fff5 0%, #0099ff 100%) !important;
+            color: #000000 !important;
+            border: none !important;
+            border-radius: 8px !important;
+            padding: 0.5rem 1.5rem !important;
+            font-weight: 700 !important;
+            font-size: 0.85rem !important;
+            letter-spacing: 1px !important;
+            width: 100% !important;
+            margin-top: 0.5rem !important;
+            transition: all 0.3s ease !important;
+            box-shadow: 0 4px 20px rgba(0, 255, 255, 0.3) !important;
+            height: 38px !important;
+        }
+        
+        .stButton > button:hover {
+            transform: translateY(-2px) !important;
+            box-shadow: 0 6px 30px rgba(0, 255, 255, 0.5) !important;
+        }
+        
+        /* Checkbox styling */
+        .stCheckbox {
+            color: #8a8a9e !important;
+            font-size: 0.8rem !important;
+        }
+        
+        /* Divider */
+        .neon-divider {
+            text-align: center;
+            margin: 1rem 0;
+            color: #8a8a9e;
+            position: relative;
+            font-size: 0.8rem;
+        }
+        
+        .neon-divider::before,
+        .neon-divider::after {
+            content: "";
+            position: absolute;
+            top: 50%;
+            width: 42%;
+            height: 1px;
+            background: rgba(138, 138, 158, 0.3);
+        }
+        
+        .neon-divider::before {
+            left: 0;
+        }
+        
+        .neon-divider::after {
+            right: 0;
+        }
+        
+        /* Social buttons */
+        .social-btn {
+            background: rgba(42, 44, 56, 0.8) !important;
+            border: 1px solid rgba(138, 138, 158, 0.2) !important;
+            border-radius: 8px !important;
+            color: #ffffff !important;
+            padding: 0.5rem !important;
+            margin: 0.3rem 0 !important;
+            font-size: 0.8rem !important;
+        }
+        
+        /* Link styling */
+        .neon-link {
+            color: #00fff5;
+            text-decoration: none;
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+        }
+        
+        .neon-link:hover {
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+        
+        /* Footer text */
+        .footer-text {
+            text-align: center;
+            margin-top: 1rem;
+            color: #8a8a9e;
+            font-size: 0.8rem;
+        }
+        
+        /* Tab styling */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 2rem;
+            background: transparent;
+            border-bottom: 1px solid rgba(0, 255, 255, 0.1);
+        }
+        
+        .stTabs [data-baseweb="tab"] {
+            color: #8a8a9e;
+            background: transparent;
+            border: none;
+            font-weight: 600;
+        }
+        
+        .stTabs [aria-selected="true"] {
+            color: #00fff5 !important;
+            border-bottom: 2px solid #00fff5 !important;
+        }
+        
+        /* Error/Success messages */
+        .stAlert {
+            background: rgba(42, 44, 56, 0.8) !important;
+            border-radius: 8px !important;
+            border-left: 3px solid #00fff5 !important;
+            padding: 0.5rem !important;
+            font-size: 0.8rem !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    # Center container
+    col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        st.markdown("""
-            <div class="auth-container">
-                <div class="auth-header">
-                    <h1 class="auth-title">🏢 Facilities AI</h1>
-                    <p class="auth-subtitle">Your Intelligent Office Assistant</p>
-                </div>
+        # st.markdown('<div class="neon-card">', unsafe_allow_html=True)
+        st.markdown('''
+            <div class="neon-card" style="padding: 1rem; text-align: center;">
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;">🤖</div>
+                <h2 style="margin: 0; color: #667eea; font-weight: 700;">AI Assistant</h2>
+                <p style="color: #666; margin-top: 0.5rem;">Facilities Management AI Assistant</p>
             </div>
-        """, unsafe_allow_html=True)
+        ''', unsafe_allow_html=True)        
+        # Check if showing registration form
+        if st.session_state.show_register:
+            # Registration Form
+            st.markdown('<div class="neon-icon">🤖</div>', unsafe_allow_html=True)
+            st.markdown('<h1 class="neon-title">Create Account</h1>', unsafe_allow_html=True)
+            st.markdown('<p class="neon-subtitle">Join Facilities AI today</p>', unsafe_allow_html=True)
+            
+            with st.form("register_form", clear_on_submit=False):
+                full_name = st.text_input(
+                    "Full Name",
+                    placeholder="Enter your full name",
+                    help="Your complete name"
+                )
+                
+                col_r1, col_r2 = st.columns(2)
+                with col_r1:
+                    username_reg = st.text_input(
+                        "Username",
+                        placeholder="Choose username",
+                        help="Unique username"
+                    )
+                with col_r2:
+                    email = st.text_input(
+                        "Email",
+                        placeholder="Enter email",
+                        help="Your work email"
+                    )
+                
+                col_r3, col_r4 = st.columns(2)
+                with col_r3:
+                    password_reg = st.text_input(
+                        "Password",
+                        type="password",
+                        placeholder="Min 8 characters",
+                        help="Strong password"
+                    )
+                with col_r4:
+                    confirm_password = st.text_input(
+                        "Confirm",
+                        type="password",
+                        placeholder="Re-enter password"
+                    )
+                
+                agree_terms = st.checkbox("I agree to Terms of Service and Privacy Policy")
+                
+                register_btn = st.form_submit_button("CREATE ACCOUNT", use_container_width=True)
+                
+                if register_btn:
+                    if not all([full_name, username_reg, email, password_reg, confirm_password]):
+                        st.error("📝 All fields are required")
+                    elif not agree_terms:
+                        st.error("📋 Please agree to the terms")
+                    elif len(password_reg) < 8:
+                        st.error("🔒 Password must be at least 8 characters")
+                    elif password_reg != confirm_password:
+                        st.error("🔄 Passwords do not match")
+                    elif "@" not in email or "." not in email:
+                        st.error("📧 Invalid email address")
+                    else:
+                        with st.spinner("🔄 Creating account..."):
+                            try:
+                                response = requests.post(
+                                    f"{Config.API_URL}/api/register",
+                                    json={
+                                        "username": username_reg,
+                                        "email": email,
+                                        "full_name": full_name,
+                                        "password": password_reg
+                                    },
+                                    timeout=10
+                                )
+                                
+                                if response.status_code == 200:
+                                    st.success("✅ Account created successfully!")
+                                    st.info("🔐 Please sign in with your credentials")
+                                    st.balloons()
+                                    time.sleep(2)
+                                    st.session_state.show_register = False
+                                    st.rerun()
+                                else:
+                                    error_detail = response.json().get("detail", "Registration failed")
+                                    st.error(f"❌ {error_detail}")
+                            except requests.exceptions.ConnectionError:
+                                st.error("🔴 Backend server is not running")
+                                st.code("uvicorn main:app --reload", language="bash")
+                            except Exception as e:
+                                st.error(f"⚠️ Error: {str(e)}")
+            
+            # Back to login
+            st.markdown('<div class="neon-divider">OR</div>', unsafe_allow_html=True)
+            col_back1, col_back2, col_back3 = st.columns([1, 2, 1])
+            with col_back2:
+                if st.button("← Back to Sign In", use_container_width=True, key="back_to_login"):
+                    st.session_state.show_register = False
+                    st.rerun()
         
-        # Tabs for Login and Register
-        tab1, tab2 = st.tabs(["🔐 Sign In", "📝 Create Account"])
-        
-        # LOGIN TAB
-        with tab1:
+        else:
+            # Login Form (existing code)
+            # AI Logo/Icon
+            st.markdown('<div class="neon-icon">🤖</div>', unsafe_allow_html=True)
+            st.markdown('<h1 class="neon-title">Sign In</h1>', unsafe_allow_html=True)
+            st.markdown('<p class="neon-subtitle">Access your account</p>', unsafe_allow_html=True)
+            
+            # Login Form
             with st.form("login_form", clear_on_submit=False):
                 username = st.text_input(
-                    "Username",
-                    placeholder="Enter your username",
-                    help="Your unique username"
+                    "Email",
+                    placeholder="",
+                    help="Enter your username or email"
                 )
+                
                 password = st.text_input(
                     "Password",
-                    placeholder="Enter your password",
+                    placeholder="",
                     type="password",
-                    help="Minimum 8 characters"
+                    help="Enter your password"
                 )
                 
-                col_a, col_b = st.columns([3, 1])
+                col_a, col_b = st.columns(2)
                 with col_a:
-                    remember = st.checkbox("Remember me")
+                    remember = st.checkbox("Keep me signed in")
                 with col_b:
-                    st.markdown("")  # Spacing
+                    st.markdown('<div style="text-align: right; padding-top: 0.5rem;"><a href="#" class="neon-link">Forgot password?</a></div>', unsafe_allow_html=True)
                 
-                submit = st.form_submit_button("🚀 LOGIN", use_container_width=True)
+                submit = st.form_submit_button("SIGN IN", use_container_width=True)
                 
                 if submit:
                     if not username or not password:
@@ -391,7 +688,7 @@ def login_page():
                                     st.error("❌ Invalid credentials. Please try again.")
                             
                             except requests.exceptions.Timeout:
-                                st.error("The server is taking too long to respond.")
+                                st.error("⏱️ The server is taking too long to respond.")
                             except requests.exceptions.ConnectionError:
                                 st.error("🔴 **Server Connection Error**")
                                 st.info("Please ensure the backend server is running:")
@@ -399,100 +696,42 @@ def login_page():
                             except Exception as e:
                                 st.error(f"⚠️ Unexpected error: {str(e)}")
                                 print(f"Login error: {type(e).__name__} - {str(e)}")
+            
+            # Divider
+            st.markdown('<div class="neon-divider">OR</div>', unsafe_allow_html=True)
+            
+            # Social login buttons
+            st.markdown("""
+                <button class="social-btn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px;">
+                    <span style="font-size: 1.2rem;">🔵</span> Continue with Google
+                </button>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("""
+                <button class="social-btn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 0.5rem;">
+                    <span style="font-size: 1.2rem;">🍎</span> Continue with Apple
+                </button>
+            """, unsafe_allow_html=True)
+            
+            
+            st.markdown('<div class="footer-text" style="color: #8a8a9e; font-size: 0.9rem;">New here?</div>', unsafe_allow_html=True)
+            
+            # Footer - Create Account Link
+            col_x, col_y, col_z = st.columns([1, 2, 1])
+            with col_y:
+                if st.button("Create an account", use_container_width=True, key="create_account_btn"):
+                    st.session_state.show_register = True
+                    st.rerun()
         
-        # REGISTER TAB
-        with tab2:
-            with st.form("register_form", clear_on_submit=False):
-                st.markdown("Create your account")
-                
-                full_name = st.text_input(
-                    "Full Name *",
-                    placeholder="Enter Full Name",
-                    help="Your complete name"
-                )
-                
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    username_reg = st.text_input(
-                        "Username *",
-                        placeholder="Enter Username",
-                        help="Choose a unique username"
-                    )
-                with col_b:
-                    email = st.text_input(
-                        "Email *",
-                        placeholder="Enter Email",
-                        help="Your work email"
-                    )
-                
-                col_c, col_d = st.columns(2)
-                with col_c:
-                    password_reg = st.text_input(
-                        "Password *",
-                        type="password",
-                        placeholder="Min 8 characters",
-                        help="Strong password recommended"
-                    )
-                with col_d:
-                    confirm_password = st.text_input(
-                        "Confirm Password *",
-                        type="password",
-                        placeholder="Re-enter password"
-                    )
-                
-                agree_terms = st.checkbox("I agree to the Terms of Service and Privacy Policy")
-                
-                register_btn = st.form_submit_button("✨ CREATE ACCOUNT", use_container_width=True)
-                
-                if register_btn:
-                    if not all([full_name, username_reg, email, password_reg, confirm_password]):
-                        st.error("📝 All fields are required")
-                    elif not agree_terms:
-                        st.error("📋 Please agree to the terms and conditions")
-                    elif len(password_reg) < 8:
-                        st.error("🔒 Password must be at least 8 characters")
-                    elif password_reg != confirm_password:
-                        st.error("🔄 Passwords do not match")
-                    elif "@" not in email or "." not in email:
-                        st.error("📧 Please enter a valid email address")
-                    else:
-                        with st.spinner("🔄 Creating your account..."):
-                            try:
-                                response = requests.post(
-                                    f"{Config.API_URL}/api/register",
-                                    json={
-                                        "username": username_reg,
-                                        "email": email,
-                                        "full_name": full_name,
-                                        "password": password_reg
-                                    },
-                                    timeout=10
-                                )
-                                
-                                if response.status_code == 200:
-                                    st.success("✅ Account created successfully!")
-                                    st.info("🔐 Please sign in with your credentials")
-                                    st.balloons()
-                                    time.sleep(2)
-                                    st.rerun()
-                                else:
-                                    error_detail = response.json().get("detail", "Registration failed")
-                                    st.error(f"❌ {error_detail}")
-                            except requests.exceptions.ConnectionError:
-                                st.error("🔴 Backend server is not running")
-                                st.code("uvicorn main:app --reload", language="bash")
-                            except Exception as e:
-                                st.error(f"⚠️ Error: {str(e)}")
+        st.markdown('</div>', unsafe_allow_html=True)
         
-        # Footer
-        st.markdown("---")
+        # Copyright
         st.markdown("""
-            <p style='text-align: center; color: #999; font-size: 0.9rem;'>
+            <p style='text-align: center; color: #5a5a6e; font-size: 0.85rem; margin-top: 2rem;'>
                 🔒 Secure • 🚀 Fast • 💡 Intelligent<br>
                 © 2025 Facilities Management AI. All rights reserved.
             </p>
         """, unsafe_allow_html=True)
-
 
 def dashboard():
     """Enhanced main dashboard with modern UI"""
