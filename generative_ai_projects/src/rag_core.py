@@ -12,10 +12,7 @@ import pandas as pd
 from src.llm.clients import setup_llm_clients
 import dotenv
 from config.constant_config import Config
-from src.utils.prompts import (
-    FacilitiesPrompt,
 
-)
 
 
 dotenv.load_dotenv()
@@ -337,9 +334,23 @@ class FacilitiesRAGSystem:
                 for msg in self.chat_history[-4:]:
                     history_context += f"{msg['role']}: {msg['content']}\n"
 
-            prompt_text = FacilitiesPrompt.create_prompt(history_context, context, query)
+            prompt = f"""You are a professional Facilities Management Assistant for an office building. Provide clear, concise, and helpful answers to all questions.
 
-            response = self.llm.invoke(prompt_text)
+            Answer the question based ONLY on the context below when it is relevant. If the question falls outside the provided context or is general, respond with a knowledgeable and professional answer, covering common knowledge or typical scenarios about facilities, amenities, policies, and procedures.
+
+            {history_context}
+
+            Context from facilities handbook:
+            {context}
+
+            Current Question: {query}
+
+            Provide a clear, structured answer about facilities, amenities, policies, and procedures.
+            Include relevant contact information (extensions) when applicable.
+            If the context doesn't contain the answer, do your best to provide a correct general response.
+            If you cannot answer the question, politely say so and suggest contacting the relevant department."""
+
+            response = self.llm.invoke(prompt)
             answer = response.content
 
             self.chat_history.append({"role": "user", "content": query})
