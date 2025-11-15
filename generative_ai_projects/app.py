@@ -10,11 +10,11 @@ import json
 from src.utils.state_utils import initialize_session_state
 from src.rag_core import FacilitiesRAGSystem
 from src.llm.clients import get_llm_greeting_response
+from config.constant_config import Config
 
 dotenv.load_dotenv()
 
 # API Configuration
-API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
 
 # Enhanced CSS Styling with Modern Design
 st.markdown("""
@@ -375,7 +375,7 @@ def login_page():
                         with st.spinner("🔄 Authenticating..."):
                             try:
                                 response = requests.post(
-                                    f"{API_URL}/api/login",
+                                    f"{Config.API_URL}/api/login",
                                     json={"username": username, "password": password},
                                     timeout=10
                                 )
@@ -388,8 +388,7 @@ def login_page():
                                     st.session_state.messages = []
                                     st.session_state.login_time = datetime.now()
                                     
-                                    st.success(f"✨ Welcome back, {data['user']['full_name']}!")
-                                    st.balloons()
+                                    st.toast('Login successful!', icon='✅')
                                     time.sleep(1.5)
                                     st.rerun()
                                 else:
@@ -404,12 +403,11 @@ def login_page():
         # REGISTER TAB
         with tab2:
             with st.form("register_form", clear_on_submit=False):
-                st.markdown("### Join Us Today! 🎉")
-                st.markdown("Create your account in seconds")
+                st.markdown("Create your account")
                 
                 full_name = st.text_input(
                     "Full Name *",
-                    placeholder="John Doe",
+                    placeholder="Enter Full Name",
                     help="Your complete name"
                 )
                 
@@ -417,13 +415,13 @@ def login_page():
                 with col_a:
                     username_reg = st.text_input(
                         "Username *",
-                        placeholder="johndoe",
+                        placeholder="Enter Username",
                         help="Choose a unique username"
                     )
                 with col_b:
                     email = st.text_input(
                         "Email *",
-                        placeholder="john@company.com",
+                        placeholder="Enter email",
                         help="Your work email"
                     )
                 
@@ -461,7 +459,7 @@ def login_page():
                         with st.spinner("🔄 Creating your account..."):
                             try:
                                 response = requests.post(
-                                    f"{API_URL}/api/register",
+                                    f"{Config.API_URL}/api/register",
                                     json={
                                         "username": username_reg,
                                         "email": email,
@@ -668,11 +666,6 @@ def dashboard():
                 st.session_state.messages = []
                 if st.session_state.rag_system:
                     st.session_state.rag_system.chat_history = []
-                st.rerun()
-        
-        with col_b:
-            if st.button("🚪 Logout", use_container_width=True):
-                st.session_state.clear()
                 st.rerun()
         
         # Export Chat

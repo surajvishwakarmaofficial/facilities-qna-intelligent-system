@@ -1,43 +1,30 @@
-from fastapi import FastAPI, HTTPException
+import os
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 import redis
 import uuid
 from datetime import datetime, timedelta
-import asyncio
-import uuid
+from jose import jwt
 
 from src.llm.litellm_client import LiteLLMClient
 from src.rag.vector_store import MilvusStore
 from src.rag.retriever import KnowledgeRetriever
 from src.agents.facilities_agent import FacilitiesAgent
 from src.database.session import DatabaseManager
+from sqlalchemy.orm import Session
 from src.database.models import Ticket
 from src.utils.rate_limiter import RateLimiter
 from src.utils.cache import ResponseCache
 import dotenv
-import os
 from passlib.context import CryptContext
 
-
-from fastapi import FastAPI, HTTPException, Depends, status
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from pydantic import BaseModel
-from typing import Optional
-import redis
-import uuid
-from datetime import datetime
-import asyncio
-import os
-from passlib.context import CryptContext
-from sqlalchemy.orm import Session
-from src.database.session import DatabaseManager
 from src.database.models import User, Ticket, Base
-import dotenv
 import bcrypt
 import litellm
+from config.constant_config import Config
 
 litellm.set_verbose = True
 
@@ -50,9 +37,6 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 security = HTTPBasic()
 
-redis_client = redis.Redis(host='localhost', port=6379, decode_responses=True)
-rate_limiter = RateLimiter(redis_client)
-cache = ResponseCache(redis_client)
 llm_client = LiteLLMClient()
 
 vector_store = MilvusStore(
@@ -62,7 +46,7 @@ vector_store = MilvusStore(
 
 retriever = KnowledgeRetriever(vector_store, llm_client)
 agent = FacilitiesAgent(llm_client, retriever)
-db_manager = DatabaseManager("sqlite:///./facility_intelligent_system.db")
+db_manager = DatabaseManager(Config.SQLITE_DB_URL)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -102,10 +86,10 @@ class RegisterRequest(BaseModel):
 async def register(request: RegisterRequest, db: Session = Depends(get_db)):
     password = request.password.strip()
     
-    if len(password) != 8:
+    if len(password) < 8:
         raise HTTPException(
             status_code=400,
-            detail="Password must be exactly 8 characters. Example: yash2025"
+            detail="Password must be min 8 characters"
         )
     
     if db.query(User).filter(User.username == request.username).first():
@@ -164,22 +148,60 @@ async def create_default_admin():
     finally:
         db.close()
 
+from pydantic import BaseModel
+from typing import Optional
 
-@app.post("/api/login")
+class UserResponse(BaseModel):
+    id: str
+    username: str
+    email: str
+    full_name: Optional[str] = None
+
+class LoginResponse(BaseModel):
+    user: UserResponse
+    access_token: str
+    token_type: str = "bearer"
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=Config.ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, Config.SECRET_KEY, algorithm=Config.ALGORITHM)
+    return encoded_jwt
+
+
+@app.post("/api/login", response_model=LoginResponse)
 async def login(request: LoginRequest, db: Session = Depends(get_db)):
     user = authenticate_user(db, request.username, request.password)
+
     if not user:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     
-    return {
+    access_token = create_access_token(
+        data={"sub": user.username}
+    )
+    data = {
+        "status": 200,
         "message": "Login successful",
         "user": {
+            "id": user.id,
             "username": user.username,
             "email": user.email,
             "full_name": user.full_name
-        }
+        },
+        "access_token": access_token,
+        "token_type": "bearer",
     }
 
+    return data
 
 @app.on_event("startup")
 async def startup_event():
