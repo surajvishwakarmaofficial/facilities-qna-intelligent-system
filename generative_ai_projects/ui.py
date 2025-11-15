@@ -734,234 +734,775 @@ def login_page():
         """, unsafe_allow_html=True)
 
 def dashboard():
-    """Main dashboard"""
+    """Main dashboard with tickets"""
     user = st.session_state.user_data
     
-    # Top Header Bar
-    col_header, col_logout = st.columns([6, 1])
+    col_h, col_l = st.columns([6, 1])
     
-    with col_header:
-        st.markdown(f"""
-            <div class="dashboard-header">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <div class="user-welcome">👋 Welcome, {user['full_name']}!</div>
-                        <div class="user-details">
-                            <span>👤 {user['username']}</span>
-                            <span>📧 {user['email']}</span>
-                            <span>🛡️ {user['role']}</span>
-                            <span>🕒 {datetime.now().strftime('%B %d, %Y • %I:%M %p')}</span>
-                        </div>
-                    </div>
-                </div>
+    with col_h:
+        st.markdown(f'''
+        <div class="dashboard-header">
+            <div class="user-welcome">👋 Welcome, {user['full_name']}!</div>
+            <div class="user-details">
+                <span>👤 {user['username']}</span>
+                <span>📧 {user['email']}</span>
+                <span>🛡️ {user['role']}</span>
+                <span>🕒 {datetime.now().strftime('%B %d, %Y • %I:%M %p')}</span>
             </div>
-        """, unsafe_allow_html=True)
+        </div>
+        ''', unsafe_allow_html=True)
     
-    with col_logout:
+    with col_l:
         st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
-        if st.button("🚪 Logout", use_container_width=True, type="secondary"):
+        if st.button("🚪 Logout", use_container_width=True):
             st.session_state.clear()
             st.rerun()
-
-    # Quick Stats Row
+    
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.markdown(f"""
-            <div class="stat-card">
-                <div class="stat-value">💬</div>
-                <div class="stat-value">{len(st.session_state.messages)}</div>
-                <div class="stat-label">Messages</div>
-            </div> 
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="stat-card"><div class="stat-value">💬</div><div class="stat-value">{len(st.session_state.get("messages", []))}</div><div class="stat-label">Messages</div></div>', unsafe_allow_html=True)
     
     with col2:
-        system_status = "🟢 Active" if st.session_state.system_initialized else "🟡 Inactive"
-        st.markdown(f"""
-            <div class="stat-card">
-                <div class="stat-value">🤖</div>
-                <div class="stat-label">System Status</div>
-                <div style="margin-top: 0.5rem; font-weight: 600;">{system_status}</div>
-            </div>
-        """, unsafe_allow_html=True)
+        status = "🟢 Active" if st.session_state.get('system_initialized', False) else "🟡 Inactive"
+        st.markdown(f'<div class="stat-card"><div class="stat-value">🤖</div><div class="stat-label">System</div><div style="margin-top: 0.5rem; font-weight: 600;">{status}</div></div>', unsafe_allow_html=True)
     
     with col3:
-        session_duration = "Just now"
+        session = "Just now"
         if hasattr(st.session_state, 'login_time'):
-            delta = datetime.now() - st.session_state.login_time
-            minutes = int(delta.total_seconds() / 60)
-            session_duration = f"{minutes}m" if minutes > 0 else "Just now"
-        
-        st.markdown(f"""
-            <div class="stat-card">
-                <div class="stat-value">⏱️</div>
-                <div class="stat-label">Session</div>
-                <div style="margin-top: 0.5rem; font-weight: 600;">{session_duration}</div>
-            </div>
-        """, unsafe_allow_html=True)
+            mins = int((datetime.now() - st.session_state.login_time).total_seconds() / 60)
+            session = f"{mins}m" if mins > 0 else "Just now"
+        st.markdown(f'<div class="stat-card"><div class="stat-value">⏱️</div><div class="stat-label">Session</div><div style="margin-top: 0.5rem; font-weight: 600;">{session}</div></div>', unsafe_allow_html=True)
     
     with col4:
-        docs_processed = st.session_state.get('docs_processed', 0)
-        st.markdown(f"""
-            <div class="stat-card">
-                <div class="stat-value">📄</div>
-                <div class="stat-value">{docs_processed}</div>
-                <div class="stat-label">Docs Processed</div>
-            </div>
-        """, unsafe_allow_html=True)
+        docs = st.session_state.get('docs_processed', 0)
+        st.markdown(f'<div class="stat-card"><div class="stat-value">📄</div><div class="stat-value">{docs}</div><div class="stat-label">Docs</div></div>', unsafe_allow_html=True)
     
-    with st.sidebar:
-        st.markdown("### ⚡ System Control")
-        
-        if not st.session_state.system_initialized:
-            if st.button("🚀 Initialize Knowledge Base", type="primary", use_container_width=True):
-                
-                steps = [
-                    ("Connecting to Milvus...", 0),
-                    ("Loading embeddings...", 25),
-                    ("Processing knowledge base...", 50),
-                    ("Building vector index...", 75),
-                    ("Finalizing system...", 90),
-                ]
-                
-                spinner_placeholder = st.empty()
-                progress_placeholder = st.empty()
-                
-                success = True
-                
-                rag_system = FacilitiesRAGSystem()
-                
-                with spinner_placeholder:
-                    with st.spinner(f"🔄 {steps[0][0]}"):
-                        progress_placeholder.progress(steps[0][1])
-                        if not rag_system.initialize_clients():
-                            success = False
-                            spinner_placeholder.empty()
-                            st.error("❌ Failed to initialize system")
-                
-                if success:
-                    with spinner_placeholder:
-                        with st.spinner(f"🔄 {steps[1][0]}"):
-                            progress_placeholder.progress(steps[1][1])
-                            time.sleep(0.5)
+    main_tab1, main_tab2 = st.tabs(["💬 AI Assistant", "🎫 Ticket Management"])
+    
+    # ==========================================
+    # TAB 1: AI ASSISTANT - PUT YOUR EXISTING CODE HERE
+    # ==========================================
+    with main_tab1:
+        # 🔽🔽🔽 START: COPY ALL YOUR OLD SIDEBAR CODE HERE 🔽🔽🔽
+        with st.sidebar:
+            st.markdown("### ⚡ System Control")
+            
+            if not st.session_state.system_initialized:
+                if st.button("🚀 Initialize Knowledge Base", type="primary", use_container_width=True):
+                    
+                    steps = [
+                        ("Connecting to Milvus...", 0),
+                        ("Loading embeddings...", 25),
+                        ("Processing knowledge base...", 50),
+                        ("Building vector index...", 75),
+                        ("Finalizing system...", 90),
+                    ]
+                    
+                    spinner_placeholder = st.empty()
+                    progress_placeholder = st.empty()
+                    
+                    success = True
+                    
+                    rag_system = FacilitiesRAGSystem()
                     
                     with spinner_placeholder:
-                        with st.spinner(f"🔄 {steps[2][0]}"):
-                            progress_placeholder.progress(steps[2][1])
-                            time.sleep(0.5)
-                    
-                    with spinner_placeholder:
-                        with st.spinner(f"🔄 {steps[3][0]}"):
-                            progress_placeholder.progress(steps[3][1])
-                            if not rag_system.load_knowledge_base():
+                        with st.spinner(f"🔄 {steps[0][0]}"):
+                            progress_placeholder.progress(steps[0][1])
+                            if not rag_system.initialize_clients():
                                 success = False
                                 spinner_placeholder.empty()
-                                st.error("❌ Failed to load knowledge base")
+                                st.error("❌ Failed to initialize system")
                     
                     if success:
                         with spinner_placeholder:
-                            with st.spinner(f"🔄 {steps[4][0]}"):
-                                progress_placeholder.progress(steps[4][1])
+                            with st.spinner(f"🔄 {steps[1][0]}"):
+                                progress_placeholder.progress(steps[1][1])
                                 time.sleep(0.5)
                         
-                        spinner_placeholder.empty()
-                        progress_placeholder.progress(100)
-                        st.success("✅ System ready!")
+                        with spinner_placeholder:
+                            with st.spinner(f"🔄 {steps[2][0]}"):
+                                progress_placeholder.progress(steps[2][1])
+                                time.sleep(0.5)
                         
-                        st.session_state.rag_system = rag_system
-                        st.session_state.system_initialized = True
+                        with spinner_placeholder:
+                            with st.spinner(f"🔄 {steps[3][0]}"):
+                                progress_placeholder.progress(steps[3][1])
+                                if not rag_system.load_knowledge_base():
+                                    success = False
+                                    spinner_placeholder.empty()
+                                    st.error("❌ Failed to load knowledge base")
                         
-                        st.balloons()
-                        time.sleep(1.5)
-                        st.rerun()
-                
-                if not success:
-                    progress_placeholder.empty()
-        else:
-            st.markdown("""
-                <div style="background: linear-gradient(135deg, #d4edda, #c3e6cb); 
-                            padding: 1rem; border-radius: 12px; text-align: center;
-                            border: 2px solid #28a745; margin-bottom: 1rem;">
-                    <div style="font-size: 2rem; margin-bottom: 0.5rem;">✅</div>
-                    <div style="color: #155724; font-weight: 700; font-size: 1.1rem;">
-                        System Ready
-                    </div>
-                    <div style="color: #155724; font-size: 0.85rem; margin-top: 0.3rem;">
-                        AI-powered responses active
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        if st.session_state.system_initialized:
-            st.markdown("### 📤 Upload Documents")
-            uploaded_file = st.file_uploader(
-                "Upload Documents",
-                type=["pdf", "csv", "xlsx", "xls", "txt"],
-                help="Upload documents in PDF, CSV, Excel, or TXT format"
-            )
-           
-            if uploaded_file:
-                file_identifier = (uploaded_file.name, uploaded_file.size)
-                if st.session_state.processed_file_id != file_identifier:
-                    with st.spinner(f"📄 Processing {uploaded_file.name}..."):
-                        if st.session_state.rag_system.process_file(uploaded_file):
-                            st.session_state.processed_file_id = file_identifier
-                            st.session_state.docs_processed += 1
-                            st.success(f"✅ {uploaded_file.name} processed!")
-                            time.sleep(1)
+                        if success:
+                            with spinner_placeholder:
+                                with st.spinner(f"🔄 {steps[4][0]}"):
+                                    progress_placeholder.progress(steps[4][1])
+                                    time.sleep(0.5)
+                            
+                            spinner_placeholder.empty()
+                            progress_placeholder.progress(100)
+                            st.success("✅ System ready!")
+                            
+                            st.session_state.rag_system = rag_system
+                            st.session_state.system_initialized = True
+                            
+                            st.balloons()
+                            time.sleep(1.5)
                             st.rerun()
+                    
+                    if not success:
+                        progress_placeholder.empty()
+            else:
+                st.markdown("""
+                    <div style="background: linear-gradient(135deg, #d4edda, #c3e6cb); 
+                                padding: 1rem; border-radius: 12px; text-align: center;
+                                border: 2px solid #28a745; margin-bottom: 1rem;">
+                        <div style="font-size: 2rem; margin-bottom: 0.5rem;">✅</div>
+                        <div style="color: #155724; font-weight: 700; font-size: 1.1rem;">
+                            System Ready
+                        </div>
+                        <div style="color: #155724; font-size: 0.85rem; margin-top: 0.3rem;">
+                            AI-powered responses active
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
             
             st.markdown("---")
-        
-        if st.session_state.system_initialized:
-            if st.button("🗑️ Clear Chat", use_container_width=True):
-                st.session_state.messages = []
-                if st.session_state.rag_system:
-                    st.session_state.rag_system.chat_history = []
-                st.rerun()
-        
-            if len(st.session_state.messages) > 0:
-                st.markdown("---")
-                if st.button("💾 Export Chat", use_container_width=True):
-                    chat_export = json.dumps(st.session_state.messages, indent=2)
-                    st.download_button(
-                        label="📥 Download JSON",
-                        data=chat_export,
-                        file_name=f"chat_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                        mime="application/json",
-                        use_container_width=True
-                    )
-    
-    if hasattr(st.session_state, 'sample_question'):
-        prompt = st.session_state.sample_question
-        delattr(st.session_state, 'sample_question')
-        process_message(prompt)
-        st.rerun()
-    
-    for idx, message in enumerate(st.session_state.messages):
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
             
-            if "sources" in message and message["sources"]:
-                with st.expander("📚 View Sources", expanded=False):
-                    for source_idx, source in enumerate(message["sources"], 1):
-                        st.markdown(f"""
-                            <div class="source-doc">
-                                <div class="source-title">{source_idx}. {source['title']}</div>
-                                <div style="color: #666; font-size: 0.9rem;">
-                                    {source['content'][:300]}...
-                                </div>
-                            </div>
-                        """, unsafe_allow_html=True)
-    
-    if st.session_state.system_initialized:
-        if prompt := st.chat_input("💬 Type your message here...", key="chat_input"):
+            if st.session_state.system_initialized:
+                st.markdown("### 📤 Upload Documents")
+                uploaded_file = st.file_uploader(
+                    "Upload Documents",
+                    type=["pdf", "csv", "xlsx", "xls", "txt"],
+                    help="Upload documents in PDF, CSV, Excel, or TXT format"
+                )
+               
+                if uploaded_file:
+                    file_identifier = (uploaded_file.name, uploaded_file.size)
+                    if st.session_state.processed_file_id != file_identifier:
+                        with st.spinner(f"📄 Processing {uploaded_file.name}..."):
+                            if st.session_state.rag_system.process_file(uploaded_file):
+                                st.session_state.processed_file_id = file_identifier
+                                st.session_state.docs_processed += 1
+                                st.success(f"✅ {uploaded_file.name} processed!")
+                                time.sleep(1)
+                                st.rerun()
+                
+                st.markdown("---")
+            
+            if st.session_state.system_initialized:
+                if st.button("🗑️ Clear Chat", use_container_width=True):
+                    st.session_state.messages = []
+                    if st.session_state.rag_system:
+                        st.session_state.rag_system.chat_history = []
+                    st.rerun()
+            
+                if len(st.session_state.messages) > 0:
+                    st.markdown("---")
+                    if st.button("💾 Export Chat", use_container_width=True):
+                        chat_export = json.dumps(st.session_state.messages, indent=2)
+                        st.download_button(
+                            label="📥 Download JSON",
+                            data=chat_export,
+                            file_name=f"chat_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                            mime="application/json",
+                            use_container_width=True
+                        )
+        # 🔼🔼🔼 END: SIDEBAR CODE 🔼🔼🔼
+        
+        # 🔽🔽🔽 START: COPY YOUR CHAT MESSAGE DISPLAY CODE HERE 🔽🔽🔽
+        if hasattr(st.session_state, 'sample_question'):
+            prompt = st.session_state.sample_question
+            delattr(st.session_state, 'sample_question')
             process_message(prompt)
             st.rerun()
-    else:
-        st.chat_input("💬 Initialize system to start chatting...", key="chat_input_disabled", disabled=True)
+        
+        for idx, message in enumerate(st.session_state.messages):
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+                
+                if "sources" in message and message["sources"]:
+                    with st.expander("📚 View Sources", expanded=False):
+                        for source_idx, source in enumerate(message["sources"], 1):
+                            st.markdown(f"""
+                                <div class="source-doc">
+                                    <div class="source-title">{source_idx}. {source['title']}</div>
+                                    <div style="color: #666; font-size: 0.9rem;">
+                                        {source['content'][:300]}...
+                                    </div>
+                                </div>
+                            """, unsafe_allow_html=True)
+        
+        if st.session_state.system_initialized:
+            if prompt := st.chat_input("💬 Type your message here...", key="chat_input"):
+                process_message(prompt)
+                st.rerun()
+        else:
+            st.chat_input("💬 Initialize system to start chatting...", key="chat_input_disabled", disabled=True)
+        # 🔼🔼🔼 END: CHAT CODE 🔼🔼🔼
+    
+    # ==========================================
+    # TAB 2: TICKET MANAGEMENT - ALREADY DONE!
+    # ==========================================
+    with main_tab2:
+        ticket_dashboard_tab()
+        
+
+TICKET_STYLES = """
+<style>
+.dashboard-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 2rem;
+    border-radius: 20px;
+    color: white;
+    margin-bottom: 2rem;
+    box-shadow: 0 10px 40px rgba(102, 126, 234, 0.3);
+}
+.user-welcome {
+    font-size: 2rem;
+    font-weight: 800;
+    margin-bottom: 0.5rem;
+}
+.user-details {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    font-size: 0.95rem;
+    opacity: 0.95;
+}
+.user-details span {
+    background: rgba(255,255,255,0.2);
+    padding: 0.4rem 1rem;
+    border-radius: 20px;
+}
+.stat-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 1.5rem;
+    border-radius: 16px;
+    text-align: center;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+    transition: transform 0.3s ease;
+}
+.stat-card:hover {
+    transform: translateY(-5px);
+}
+.stat-value {
+    font-size: 2.5rem;
+    font-weight: 800;
+    margin-bottom: 0.5rem;
+}
+.stat-label {
+    font-size: 0.9rem;
+    opacity: 0.9;
+    font-weight: 600;
+}
+.ticket-card {
+    background: white;
+    border-radius: 16px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    margin-bottom: 1rem;
+    border-left: 5px solid #667eea;
+    transition: all 0.3s ease;
+}
+.ticket-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+}
+.ticket-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+.ticket-id {
+    font-weight: 700;
+    font-size: 1.2rem;
+    color: #667eea;
+    letter-spacing: 0.5px;
+}
+.ticket-status-badge {
+    display: inline-block;
+    padding: 0.5rem 1.2rem;
+    border-radius: 25px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.status-open { background: #fff3cd; color: #856404; }
+.status-assigned { background: #cfe2ff; color: #084298; }
+.status-in-progress { background: #d1ecf1; color: #0c5460; }
+.status-on-hold { background: #e2e3e5; color: #383d41; }
+.status-escalated { background: #f8d7da; color: #721c24; animation: pulse 2s infinite; }
+.status-resolved { background: #d4edda; color: #155724; }
+.status-closed { background: #e2e3e5; color: #383d41; }
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+.priority-badge {
+    display: inline-block;
+    padding: 0.4rem 1rem;
+    border-radius: 15px;
+    font-weight: 600;
+    font-size: 0.75rem;
+    margin-left: 0.5rem;
+    text-transform: uppercase;
+}
+.priority-critical { 
+    background: #dc3545; 
+    color: white; 
+    animation: blink 1.5s infinite;
+}
+.priority-high { background: #fd7e14; color: white; }
+.priority-medium { background: #ffc107; color: #000; }
+.priority-low { background: #28a745; color: white; }
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+.ticket-meta {
+    display: flex;
+    gap: 1.5rem;
+    font-size: 0.9rem;
+    color: #666;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+    padding-top: 1rem;
+    border-top: 1px solid #eee;
+}
+.ticket-meta span {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+.stats-mini-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 1.5rem;
+    border-radius: 16px;
+    text-align: center;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+    transition: transform 0.3s ease;
+}
+.stats-mini-card:hover {
+    transform: scale(1.05);
+}
+.stats-mini-value {
+    font-size: 2.5rem;
+    font-weight: 800;
+    margin-bottom: 0.5rem;
+}
+.stats-mini-label {
+    font-size: 0.9rem;
+    opacity: 0.95;
+    font-weight: 600;
+}
+.ticket-details-box {
+    background: #f8f9fa;
+    padding: 1.5rem;
+    border-radius: 12px;
+    margin: 1rem 0;
+    border-left: 4px solid #667eea;
+}
+.history-entry {
+    background: #f8f9fa;
+    padding: 1rem;
+    border-radius: 10px;
+    margin-bottom: 0.8rem;
+    border-left: 3px solid #667eea;
+    transition: all 0.2s ease;
+}
+.history-entry:hover {
+    background: #e9ecef;
+    transform: translateX(5px);
+}
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: #999;
+}
+.empty-state-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+}
+</style>
+"""
+
+
+def ticket_dashboard_tab():
+    """Complete Ticket Management Dashboard"""
+    st.markdown(TICKET_STYLES, unsafe_allow_html=True)
+    user = st.session_state.user_data
+    
+    st.markdown("### 📊 Ticket Dashboard Overview")
+    
+    try:
+        stats_response = requests.get(f"{Config.API_URL}/api/tickets/stats/dashboard", timeout=5)
+        
+        if stats_response.status_code == 200:
+            stats = stats_response.json()
+            col1, col2, col3, col4, col5 = st.columns(5)
+            
+            with col1:
+                st.markdown(f'<div class="stats-mini-card"><div class="stats-mini-value">{stats.get("total_tickets", 0)}</div><div class="stats-mini-label">📊 Total</div></div>', unsafe_allow_html=True)
+            with col2:
+                st.markdown(f'<div class="stats-mini-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);"><div class="stats-mini-value">{stats.get("open", 0)}</div><div class="stats-mini-label">🔓 Open</div></div>', unsafe_allow_html=True)
+            with col3:
+                st.markdown(f'<div class="stats-mini-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);"><div class="stats-mini-value">{stats.get("in_progress", 0)}</div><div class="stats-mini-label">⚙️ Progress</div></div>', unsafe_allow_html=True)
+            with col4:
+                st.markdown(f'<div class="stats-mini-card" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);"><div class="stats-mini-value">{stats.get("escalated", 0)}</div><div class="stats-mini-label">🔥 Escalated</div></div>', unsafe_allow_html=True)
+            with col5:
+                st.markdown(f'<div class="stats-mini-card" style="background: linear-gradient(135deg, #30cfd0 0%, #330867 100%);"><div class="stats-mini-value">{stats.get("resolved", 0)}</div><div class="stats-mini-label">✅ Resolved</div></div>', unsafe_allow_html=True)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            col_s1, col_s2, col_s3 = st.columns(3)
+            with col_s1:
+                st.metric("🔥 Active Critical", stats.get('active_critical', 0))
+            with col_s2:
+                st.metric("⚠️ Active High", stats.get('active_high', 0))
+            with col_s3:
+                st.metric("📈 Resolution Rate", f"{stats.get('resolution_rate', 0)}%")
+    except:
+        st.warning("⚠️ Could not load statistics")
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    tab1, tab2, tab3 = st.tabs(["📋 My Tickets", "➕ Create Ticket", "🔍 All Tickets"])
+    
+    with tab1:
+        show_my_tickets(user)
+    
+    with tab2:
+        show_create_ticket(user)
+    
+    with tab3:
+        show_all_tickets(user)
+
+
+def show_my_tickets(user):
+    """My Tickets Tab"""
+    st.markdown("### 🎫 My Tickets")
+    
+    with st.expander("🔍 Filter & Sort", expanded=False):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            f_status = st.selectbox("Status", ["All", "Open", "Assigned", "In Progress", "On Hold", "Escalated", "Resolved", "Closed"], key="my_status")
+        with col2:
+            f_priority = st.selectbox("Priority", ["All", "Critical", "High", "Medium", "Low"], key="my_priority")
+        with col3:
+            f_sort = st.selectbox("Sort", ["Newest First", "Oldest First", "Priority"], key="my_sort")
+    
+    try:
+        params = {}
+        if f_status != "All":
+            params['status'] = f_status
+        if f_priority != "All":
+            params['priority'] = f_priority
+        
+        response = requests.get(f"{Config.API_URL}/api/tickets/user/{user['id']}", params=params, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            tickets = data.get('tickets', [])
+            
+            if f_sort == "Oldest First":
+                tickets = sorted(tickets, key=lambda x: x['created_at'])
+            elif f_sort == "Priority":
+                order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
+                tickets = sorted(tickets, key=lambda x: order.get(x['priority'], 4))
+            else:
+                tickets = sorted(tickets, key=lambda x: x['created_at'], reverse=True)
+            
+            if not tickets:
+                st.markdown('<div class="empty-state"><div class="empty-state-icon">📭</div><h3>No tickets found</h3></div>', unsafe_allow_html=True)
+            else:
+                st.markdown(f"**{len(tickets)} ticket(s)**")
+                for t in tickets:
+                    display_ticket_card(t, user['id'], False)
+        else:
+            st.error(f"❌ Failed: {response.status_code}")
+    except requests.exceptions.ConnectionError:
+        st.error("🔴 Server connection failed")
+    except Exception as e:
+        st.error(f"⚠️ Error: {e}")
+
+
+def show_create_ticket(user):
+    """Create Ticket Tab"""
+    st.markdown("### ➕ Create New Ticket")
+    st.info("💡 Fill the form to submit a support request")
+    
+    with st.form("create_form", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            category = st.selectbox("📂 Category *", ["IT Support", "Facilities", "Security", "HR", "Finance", "Operations", "Maintenance", "Equipment", "Other"])
+        with col2:
+            priority = st.selectbox("⚡ Priority *", ["Low", "Medium", "High", "Critical"], index=1)
+        
+        description = st.text_area("📝 Description *", height=150, placeholder="Describe your issue...")
+        
+        submit = st.form_submit_button("🎫 Create Ticket", use_container_width=True, type="primary")
+        
+        if submit:
+            if not description.strip() or len(description.strip()) < 10:
+                st.error("📝 Description too short (min 10 chars)")
+            else:
+                with st.spinner("Creating..."):
+                    try:
+                        resp = requests.post(f"{Config.API_URL}/api/tickets/create", json={
+                            "user_id": user['id'],
+                            "category": category,
+                            "description": description.strip(),
+                            "priority": priority
+                        }, timeout=10)
+                        
+                        if resp.status_code == 200:
+                            ticket = resp.json()
+                            st.success(f"✅ Created: **{ticket['ticket_id']}**")
+                            st.balloons()
+                            time.sleep(2)
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Failed: {resp.json().get('detail', 'Error')}")
+                    except:
+                        st.error("🔴 Server error")
+
+
+def show_all_tickets(user):
+    """All Tickets Tab (Admin)"""
+    if user.get('role') not in ['admin', 'manager']:
+        st.warning("🔒 Admin access required")
+        return
+    
+    st.markdown("### 🔍 All Tickets (Admin)")
+    
+    with st.expander("🔍 Filters", expanded=True):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            a_status = st.selectbox("Status", ["All", "Open", "Assigned", "In Progress", "On Hold", "Escalated", "Resolved", "Closed"], key="all_status")
+        with col2:
+            a_priority = st.selectbox("Priority", ["All", "Critical", "High", "Medium", "Low"], key="all_priority")
+        with col3:
+            a_escalated = st.selectbox("Escalation", ["All", "Escalated Only", "Non-Escalated"], key="all_esc")
+    
+    try:
+        params = {}
+        if a_status != "All":
+            params['status'] = a_status
+        if a_priority != "All":
+            params['priority'] = a_priority
+        if a_escalated == "Escalated Only":
+            params['escalated'] = True
+        elif a_escalated == "Non-Escalated":
+            params['escalated'] = False
+        
+        resp = requests.get(f"{Config.API_URL}/api/tickets/all", params=params, timeout=10)
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            tickets = data.get('tickets', [])
+            
+            if not tickets:
+                st.info("📭 No tickets match filters")
+            else:
+                st.markdown(f"**{len(tickets)} ticket(s)**")
+                for t in tickets:
+                    display_ticket_card(t, user['id'], True)
+        else:
+            st.error(f"❌ Failed: {resp.status_code}")
+    except:
+        st.error("🔴 Server error")
+
+
+def display_ticket_card(ticket, user_id, is_admin):
+    """Display ticket card"""
+    status_map = {"Open": "open", "Assigned": "assigned", "In Progress": "in-progress", "On Hold": "on-hold", "Escalated": "escalated", "Resolved": "resolved", "Closed": "closed"}
+    priority_map = {"Critical": "critical", "High": "high", "Medium": "medium", "Low": "low"}
+    
+    status_cls = status_map.get(ticket['status'], 'open')
+    priority_cls = priority_map.get(ticket['priority'], 'medium')
+    
+    desc = ticket['description'][:200] + ("..." if len(ticket['description']) > 200 else "")
+    
+    st.markdown(f"""
+        <div class="ticket-card">
+            <div class="ticket-header">
+                <div>
+                    <span class="ticket-id">{ticket['ticket_id']}</span>
+                    <span class="priority-badge priority-{priority_cls}">{ticket['priority']}</span>
+                </div>
+                <span class="ticket-status-badge status-{status_cls}">{ticket['status']}</span>
+            </div>
+            <div style="margin: 1rem 0;">
+                <strong>📂 {ticket['category']}</strong><br><br>
+                <strong>📝 Description:</strong><br>
+                <div style="color: #555; margin-top: 0.5rem;">{desc}</div>
+            </div>
+            <div class="ticket-meta">
+                <span>🕒 {ticket['age_hours']:.1f}h old</span>
+                <span>📅 {ticket['created_at'][:10]}</span>
+                {f"<span style='color: #dc3545; font-weight: 700;'>⚡ Level {ticket['escalation_level']}</span>" if ticket['escalated'] else ""}
+                {f"<span>⏱️ Escalates in {ticket['hours_until_escalation']:.1f}h</span>" if ticket.get('hours_until_escalation', 0) > 0 and not ticket['escalated'] else ""}
+            </div>
+        </div>""", 
+        unsafe_allow_html=True)
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        if st.button("👁️ View", key=f"v_{ticket['ticket_id']}", use_container_width=True):
+            st.session_state[f"detail_{ticket['ticket_id']}"] = True
+            st.rerun()
+    
+    with col2:
+        if st.button("📝 Update", key=f"u_{ticket['ticket_id']}", use_container_width=True):
+            st.session_state[f"update_{ticket['ticket_id']}"] = True
+            st.rerun()
+    
+    with col3:
+        if ticket['status'] not in ['Resolved', 'Closed', 'Escalated']:
+            if st.button("🔥 Escalate", key=f"e_{ticket['ticket_id']}", use_container_width=True):
+                escalate_ticket(ticket['ticket_id'], user_id)
+    
+    with col4:
+        if st.button("📜 History", key=f"h_{ticket['ticket_id']}", use_container_width=True):
+            st.session_state[f"history_{ticket['ticket_id']}"] = True
+            st.rerun()
+    
+    if st.session_state.get(f"detail_{ticket['ticket_id']}", False):
+        view_ticket_details(ticket)
+        if st.button("✖️ Close", key=f"cd_{ticket['ticket_id']}", use_container_width=True):
+            st.session_state[f"detail_{ticket['ticket_id']}"] = False
+            st.rerun()
+    
+    if st.session_state.get(f"update_{ticket['ticket_id']}", False):
+        update_ticket_modal(ticket, user_id, is_admin)
+    
+    if st.session_state.get(f"history_{ticket['ticket_id']}", False):
+        show_ticket_history(ticket['ticket_id'])
+        if st.button("✖️ Close", key=f"ch_{ticket['ticket_id']}", use_container_width=True):
+            st.session_state[f"history_{ticket['ticket_id']}"] = False
+            st.rerun()
+
+
+def view_ticket_details(ticket):
+    """View ticket details"""
+    st.markdown(f"### 🎫 {ticket['ticket_id']}")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown(f"""
+        **Status:** {ticket['status']}  
+        **Priority:** {ticket['priority']}  
+        **Category:** {ticket['category']}  
+        **Escalated:** {'✅ Level ' + str(ticket['escalation_level']) if ticket['escalated'] else '❌ No'}  
+        **Assigned:** {ticket.get('assigned_to', 'Unassigned')}
+        """)
+    
+    with col2:
+        st.markdown(f"""
+        **Created:** {ticket['created_at'][:19]}  
+        **Age:** {ticket['age_hours']:.1f} hours  
+        **Updated:** {ticket.get('updated_at', 'N/A')[:19] if ticket.get('updated_at') else 'Never'}  
+        **Resolved:** {ticket.get('resolved_at', 'Not yet')[:19] if ticket.get('resolved_at') else 'Not yet'}
+        """)
+    
+    st.markdown("**Full Description:**")
+    st.info(ticket['description'])
+
+
+def update_ticket_modal(ticket, user_id, is_admin):
+    """Update ticket"""
+    st.markdown(f"### 📝 Update {ticket['ticket_id']}")
+    
+    with st.form(f"upd_{ticket['ticket_id']}"):
+        col1, col2 = st.columns(2)
+        
+        statuses = ["Open", "Assigned", "In Progress", "On Hold", "Escalated", "Resolved", "Closed"]
+        with col1:
+            new_status = st.selectbox("Status", statuses, index=statuses.index(ticket['status']))
+        
+        priorities = ["Low", "Medium", "High", "Critical"]
+        with col2:
+            new_priority = st.selectbox("Priority", priorities, index=priorities.index(ticket['priority']))
+        
+        assigned = st.text_input("Assign To (User ID)", value=ticket.get('assigned_to', ''))
+        notes = st.text_area("Resolution Notes", height=80)
+        
+        if st.form_submit_button("💾 Save", use_container_width=True, type="primary"):
+            try:
+                resp = requests.patch(
+                    f"{Config.API_URL}/api/tickets/{ticket['ticket_id']}/status",
+                    params={"user_id": user_id},
+                    json={
+                        "status": new_status,
+                        "priority": new_priority,
+                        "assigned_to": assigned if assigned else None,
+                        "resolution_notes": notes if notes else None
+                    },
+                    timeout=10
+                )
+                
+                if resp.status_code == 200:
+                    st.success("✅ Updated!")
+                    time.sleep(1)
+                    st.session_state[f"update_{ticket['ticket_id']}"] = False
+                    st.rerun()
+                else:
+                    st.error("❌ Failed")
+            except:
+                st.error("🔴 Error")
+
+
+def escalate_ticket(ticket_id, user_id):
+    """Escalate ticket"""
+    try:
+        resp = requests.post(
+            f"{Config.API_URL}/api/tickets/{ticket_id}/escalate",
+            params={"user_id": user_id, "reason": "Manual escalation"},
+            timeout=10
+        )
+        
+        if resp.status_code == 200:
+            st.success("🔥 Escalated!")
+            time.sleep(1)
+            st.rerun()
+        else:
+            st.error("❌ Failed")
+    except:
+        st.error("🔴 Error")
+
+
+def show_ticket_history(ticket_id):
+    """Show history"""
+    try:
+        resp = requests.get(f"{Config.API_URL}/api/tickets/{ticket_id}/history", timeout=5)
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            history = data.get('history', [])
+            
+            st.markdown(f"### 📜 History: {ticket_id}")
+            
+            if not history:
+                st.info("No changes yet")
+            else:
+                for h in history:
+                    st.markdown(f'''
+                    <div class="history-entry">
+                        <strong>{h['changed_by']}</strong>: {h['old_status'] or "New"} → <strong>{h['new_status']}</strong><br>
+                        <small style="color: #666;">{h['changed_at'][:19]}</small><br>
+                        <em>{h['comment']}</em>
+                    </div>
+                    ''', unsafe_allow_html=True)
+    except:
+        st.error("Failed to load history")
 
 def process_message(prompt):
     """Process and respond to user message"""

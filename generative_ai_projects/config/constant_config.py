@@ -17,6 +17,7 @@ class Config:
     SECRET_KEY = os.getenv("JWT_SECRET_KEY")
     ALGORITHM = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES = 30
+    AUTO_ESCALATION_SCHEDULAR = os.environ.get("AUTO_ESCALATION_SCHEDULAR", 5) #5 minutes
 
     PROJECT_ROOT = pathlib.Path(__file__).parent.parent.parent
 
