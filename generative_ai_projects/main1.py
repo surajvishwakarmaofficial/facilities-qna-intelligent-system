@@ -10,11 +10,10 @@ import json
 from src.utils.state_utils import initialize_session_state
 from src.rag_core import FacilitiesRAGSystem
 from src.llm.clients import get_llm_greeting_response
+from config.constant_config import Config
 
 dotenv.load_dotenv()
 
-# API Configuration
-API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
 
 # Enhanced CSS Styling with Modern Design
 st.markdown("""
@@ -343,9 +342,6 @@ def login_page():
         # LOGIN TAB
         with tab1:
             with st.form("login_form", clear_on_submit=False):
-                # st.markdown("### Welcome Back! 👋")
-                # st.markdown("Sign in to access your dashboard")
-                
                 username = st.text_input(
                     "Username",
                     placeholder="Enter your username",
@@ -375,7 +371,7 @@ def login_page():
                         with st.spinner("🔄 Authenticating..."):
                             try:
                                 response = requests.post(
-                                    f"{API_URL}/api/login",
+                                    f"{Config.API_URL}/api/login",
                                     json={"username": username, "password": password},
                                     timeout=10
                                 )
@@ -388,28 +384,30 @@ def login_page():
                                     st.session_state.messages = []
                                     st.session_state.login_time = datetime.now()
                                     
-                                    st.success(f"✨ Welcome back, {data['user']['full_name']}!")
-                                    st.balloons()
+                                    st.toast('Login successful!', icon='✅')
                                     time.sleep(1.5)
                                     st.rerun()
                                 else:
                                     st.error("❌ Invalid credentials. Please try again.")
+                            
+                            except requests.exceptions.Timeout:
+                                st.error("The server is taking too long to respond.")
                             except requests.exceptions.ConnectionError:
                                 st.error("🔴 **Server Connection Error**")
                                 st.info("Please ensure the backend server is running:")
                                 st.code("uvicorn main:app --reload", language="bash")
                             except Exception as e:
                                 st.error(f"⚠️ Unexpected error: {str(e)}")
+                                print(f"Login error: {type(e).__name__} - {str(e)}")
         
         # REGISTER TAB
         with tab2:
             with st.form("register_form", clear_on_submit=False):
-                st.markdown("### Join Us Today! 🎉")
-                st.markdown("Create your account in seconds")
+                st.markdown("Create your account")
                 
                 full_name = st.text_input(
                     "Full Name *",
-                    placeholder="John Doe",
+                    placeholder="Enter Full Name",
                     help="Your complete name"
                 )
                 
@@ -417,13 +415,13 @@ def login_page():
                 with col_a:
                     username_reg = st.text_input(
                         "Username *",
-                        placeholder="johndoe",
+                        placeholder="Enter Username",
                         help="Choose a unique username"
                     )
                 with col_b:
                     email = st.text_input(
                         "Email *",
-                        placeholder="john@company.com",
+                        placeholder="Enter Email",
                         help="Your work email"
                     )
                 
@@ -461,7 +459,7 @@ def login_page():
                         with st.spinner("🔄 Creating your account..."):
                             try:
                                 response = requests.post(
-                                    f"{API_URL}/api/register",
+                                    f"{Config.API_URL}/api/register",
                                     json={
                                         "username": username_reg,
                                         "email": email,
@@ -501,21 +499,30 @@ def dashboard():
     user = st.session_state.user_data
     
     # Top Header Bar
-    st.markdown(f"""
-        <div class="dashboard-header">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <div class="user-welcome">👋 Welcome, {user['full_name']}!</div>
-                    <div class="user-details">
-                        <span>👤 {user['username']}</span>
-                        <span>📧 {user['email']}</span>
-                        <span>🕒 {datetime.now().strftime('%B %d, %Y • %I:%M %p')}</span>
+    col_header, col_logout = st.columns([6, 1])
+    
+    with col_header:
+        st.markdown(f"""
+            <div class="dashboard-header">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div class="user-welcome">👋 Welcome, {user['full_name']}!</div>
+                        <div class="user-details">
+                            <span>👤 {user['username']}</span>
+                            <span>📧 {user['email']}</span>
+                            <span>🕒 {datetime.now().strftime('%B %d, %Y • %I:%M %p')}</span>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
     
+    with col_logout:
+        st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
+        if st.button("🚪 Logout", use_container_width=True, type="secondary"):
+            st.session_state.clear()
+            st.rerun()
+
     # Quick Stats Row
     col1, col2, col3, col4 = st.columns(4)
     
@@ -591,18 +598,19 @@ def dashboard():
         st.markdown("### 📤 Upload Documents")
         uploaded_file = st.file_uploader(
             "Upload PDF Policy Documents",
-            type=["pdf"],
+            type=["pdf", "csv", "xlsx", "xls", "txt"],
             disabled=not st.session_state.system_initialized,
-            help="Upload company policy documents for analysis"
+            help="Upload company policy documents for analysis",
+
         )
-        
+       
         if uploaded_file and st.session_state.system_initialized:
             file_identifier = (uploaded_file.name, uploaded_file.size)
             if st.session_state.processed_file_id != file_identifier:
                 with st.spinner(f"📄 Processing {uploaded_file.name}..."):
-                    if st.session_state.rag_system.process_pdf(uploaded_file):
+                    if st.session_state.rag_system.process_file(uploaded_file):
                         st.session_state.processed_file_id = file_identifier
-                        st.session_state.docs_processed = st.session_state.get('docs_processed', 0) + 1
+                        st.session_state.docs_processed += 1
                         st.success(f"✅ {uploaded_file.name} processed!")
                         time.sleep(1)
                         st.rerun()
@@ -668,11 +676,6 @@ def dashboard():
                 st.session_state.messages = []
                 if st.session_state.rag_system:
                     st.session_state.rag_system.chat_history = []
-                st.rerun()
-        
-        with col_b:
-            if st.button("🚪 Logout", use_container_width=True):
-                st.session_state.clear()
                 st.rerun()
         
         # Export Chat

@@ -40,4 +40,3 @@ class Session(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     last_activity = Column(DateTime, default=datetime.utcnow)
     context = Column(String)  # JSON string
-    
