@@ -14,8 +14,8 @@ from config.constant_config import Config
 
 dotenv.load_dotenv()
 
+KNOWLEDGE_BASE_DIR = "./data/knowledge_base_files"
 
-# Enhanced CSS Styling with Modern Design
 st.markdown("""
 <style>
     /* Global Styles */
@@ -138,6 +138,63 @@ st.markdown("""
         gap: 0.5rem;
     }
     
+    /* Chat messages area styling */
+    .chat-messages-area {
+        background: white;
+        border-radius: 16px;
+        padding: 1.5rem;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        margin-bottom: 1rem;
+    }
+    
+    /* Scrollbar styling */
+    .stContainer::-webkit-scrollbar {
+        width: 8px;
+    }
+    
+    .stContainer::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 10px;
+    }
+    
+    .stContainer::-webkit-scrollbar-thumb {
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        border-radius: 10px;
+    }
+    
+    .stContainer::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(135deg, #764ba2, #667eea);
+    }
+    
+    /* Message animation */
+    .stChatMessage {
+        animation: slideIn 0.3s ease-out;
+    }
+    
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    /* Empty state */
+    .chat-empty {
+        text-align: center;
+        padding: 4rem 2rem;
+        color: #999;
+    }
+    
+    .chat-empty-icon {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+    
     /* Sidebar Enhancements */
     .sidebar .sidebar-content {
         background: linear-gradient(180deg, #f8f9fa 0%, #e9ecef 100%);
@@ -251,22 +308,6 @@ st.markdown("""
         font-weight: 700;
         color: #667eea;
         margin-bottom: 0.5rem;
-    }
-    
-    /* Animation for messages */
-    @keyframes slideIn {
-        from {
-            opacity: 0;
-            transform: translateX(-20px);
-        }
-        to {
-            opacity: 1;
-            transform: translateX(0);
-        }
-    }
-    
-    .stChatMessage {
-        animation: slideIn 0.4s ease-out;
     }
     
     /* Loading Spinner */
@@ -525,7 +566,6 @@ def login_page():
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        # st.markdown('<div class="neon-card">', unsafe_allow_html=True)
         st.markdown('''
             <div class="neon-card" style="padding: 1rem; text-align: center;">
                 <div style="font-size: 2rem; margin-bottom: 0.5rem;">🤖</div>
@@ -608,7 +648,7 @@ def login_page():
                                 if response.status_code == 200:
                                     st.success("✅ Account created successfully!")
                                     st.info("🔐 Please sign in with your credentials")
-                                    st.balloons()
+                                    
                                     time.sleep(2)
                                     st.session_state.show_register = False
                                     st.rerun()
@@ -630,13 +670,11 @@ def login_page():
                     st.rerun()
         
         else:
-            # Login Form (existing code)
-            # AI Logo/Icon
+            # Login Form
             st.markdown('<div class="neon-icon">🤖</div>', unsafe_allow_html=True)
             st.markdown('<h1 class="neon-title">Sign In</h1>', unsafe_allow_html=True)
             st.markdown('<p class="neon-subtitle">Access your account</p>', unsafe_allow_html=True)
             
-            # Login Form
             with st.form("login_form", clear_on_submit=False):
                 username = st.text_input(
                     "Email",
@@ -723,8 +761,6 @@ def login_page():
                     st.session_state.show_register = True
                     st.rerun()
         
-        st.markdown('</div>', unsafe_allow_html=True)
-        
         # Copyright
         st.markdown("""
             <p style='text-align: center; color: #5a5a6e; font-size: 0.85rem; margin-top: 2rem;'>
@@ -733,58 +769,22 @@ def login_page():
             </p>
         """, unsafe_allow_html=True)
 
+
 def dashboard():
     """Main dashboard with tickets"""
     user = st.session_state.user_data
     
     col_h, col_l = st.columns([6, 1])
-    
-    with col_h:
-        st.markdown(f'''
-        <div class="dashboard-header">
-            <div class="user-welcome">👋 Welcome, {user['full_name']}!</div>
-            <div class="user-details">
-                <span>👤 {user['username']}</span>
-                <span>📧 {user['email']}</span>
-                <span>🛡️ {user['role']}</span>
-                <span>🕒 {datetime.now().strftime('%B %d, %Y • %I:%M %p')}</span>
-            </div>
-        </div>
-        ''', unsafe_allow_html=True)
-    
+        
     with col_l:
         st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
         if st.button("🚪 Logout", use_container_width=True):
             st.session_state.clear()
             st.rerun()
     
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.markdown(f'<div class="stat-card"><div class="stat-value">💬</div><div class="stat-value">{len(st.session_state.get("messages", []))}</div><div class="stat-label">Messages</div></div>', unsafe_allow_html=True)
-    
-    with col2:
-        status = "🟢 Active" if st.session_state.get('system_initialized', False) else "🟡 Inactive"
-        st.markdown(f'<div class="stat-card"><div class="stat-value">🤖</div><div class="stat-label">System</div><div style="margin-top: 0.5rem; font-weight: 600;">{status}</div></div>', unsafe_allow_html=True)
-    
-    with col3:
-        session = "Just now"
-        if hasattr(st.session_state, 'login_time'):
-            mins = int((datetime.now() - st.session_state.login_time).total_seconds() / 60)
-            session = f"{mins}m" if mins > 0 else "Just now"
-        st.markdown(f'<div class="stat-card"><div class="stat-value">⏱️</div><div class="stat-label">Session</div><div style="margin-top: 0.5rem; font-weight: 600;">{session}</div></div>', unsafe_allow_html=True)
-    
-    with col4:
-        docs = st.session_state.get('docs_processed', 0)
-        st.markdown(f'<div class="stat-card"><div class="stat-value">📄</div><div class="stat-value">{docs}</div><div class="stat-label">Docs</div></div>', unsafe_allow_html=True)
-    
     main_tab1, main_tab2 = st.tabs(["💬 AI Assistant", "🎫 Ticket Management"])
     
-    # ==========================================
-    # TAB 1: AI ASSISTANT - PUT YOUR EXISTING CODE HERE
-    # ==========================================
     with main_tab1:
-        # 🔽🔽🔽 START: COPY ALL YOUR OLD SIDEBAR CODE HERE 🔽🔽🔽
         with st.sidebar:
             st.markdown("### ⚡ System Control")
             
@@ -804,7 +804,10 @@ def dashboard():
                     
                     success = True
                     
-                    rag_system = FacilitiesRAGSystem()
+                    if not hasattr(st.session_state, 'rag_system') or st.session_state.rag_system is None:
+                        st.session_state.rag_system = FacilitiesRAGSystem(knowledge_base_dir=str(Config.KNOWLEDGE_BASE_DIR))
+                    
+                    rag_system = st.session_state.rag_system
                     
                     with spinner_placeholder:
                         with st.spinner(f"🔄 {steps[0][0]}"):
@@ -828,7 +831,7 @@ def dashboard():
                         with spinner_placeholder:
                             with st.spinner(f"🔄 {steps[3][0]}"):
                                 progress_placeholder.progress(steps[3][1])
-                                if not rag_system.load_knowledge_base():
+                                if not rag_system.rebuild_knowledge_base_from_directory():
                                     success = False
                                     spinner_placeholder.empty()
                                     st.error("❌ Failed to load knowledge base")
@@ -845,8 +848,6 @@ def dashboard():
                             
                             st.session_state.rag_system = rag_system
                             st.session_state.system_initialized = True
-                            
-                            st.balloons()
                             time.sleep(1.5)
                             st.rerun()
                     
@@ -908,45 +909,77 @@ def dashboard():
                             mime="application/json",
                             use_container_width=True
                         )
-        # 🔼🔼🔼 END: SIDEBAR CODE 🔼🔼🔼
         
-        # 🔽🔽🔽 START: COPY YOUR CHAT MESSAGE DISPLAY CODE HERE 🔽🔽🔽
-        if hasattr(st.session_state, 'sample_question'):
-            prompt = st.session_state.sample_question
-            delattr(st.session_state, 'sample_question')
-            process_message(prompt)
-            st.rerun()
+        with st.container(height=500, border=False):
+            if hasattr(st.session_state, 'sample_question'):
+                prompt = st.session_state.sample_question
+                delattr(st.session_state, 'sample_question')
+                process_message(prompt)
+                st.rerun()
+            
+            if len(st.session_state.messages) == 0:
+                st.markdown("""
+                    <div class="chat-empty">
+                        <div class="chat-empty-icon">💬</div>
+                        <h3>No messages yet</h3>
+                    </div>
+                """, unsafe_allow_html=True)
+            else:
+                for idx, message in enumerate(st.session_state.messages):
+                    with st.chat_message(message["role"]):
+                        st.markdown(message["content"])
+                        
+                        if "sources" in message and message["sources"]:
+                            with st.expander("📚 View Sources", expanded=False):
+                                sources_by_doc = {}
+                                for source in message["sources"]:
+                                    title = source.get('title', 'Unknown')
+                                    if title not in sources_by_doc:
+                                        sources_by_doc[title] = []
+                                    sources_by_doc[title].append(source.get('content', ''))
+                                
+                                for doc_idx, (title, contents) in enumerate(sources_by_doc.items(), 1):
+                                    combined_content = "\n\n".join(contents)
+                                    preview = combined_content[:500] + ("..." if len(combined_content) > 500 else "")
+                                    
+                                    st.markdown(f"""
+                                        <div class="source-doc">
+                                            <div class="source-title">
+                                                <span style="background: #667eea; color: white; padding: 0.25rem 0.5rem; border-radius: 5px; margin-right: 0.5rem;">
+                                                    {doc_idx}
+                                                </span>
+                                                📄 {title}
+                                            </div>
+                                            <div style="color: #666; font-size: 0.9rem; margin-top: 0.5rem; line-height: 1.6;">
+                                                {preview}
+                                            </div>
+                                            <div style="margin-top: 0.5rem; font-size: 0.8rem; color: #999;">
+                                                {len(contents)} chunk(s) from this document
+                                            </div>
+                                        </div>
+                                    """, unsafe_allow_html=True)
         
-        for idx, message in enumerate(st.session_state.messages):
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-                
-                if "sources" in message and message["sources"]:
-                    with st.expander("📚 View Sources", expanded=False):
-                        for source_idx, source in enumerate(message["sources"], 1):
-                            st.markdown(f"""
-                                <div class="source-doc">
-                                    <div class="source-title">{source_idx}. {source['title']}</div>
-                                    <div style="color: #666; font-size: 0.9rem;">
-                                        {source['content'][:300]}...
-                                    </div>
-                                </div>
-                            """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
         
         if st.session_state.system_initialized:
-            if prompt := st.chat_input("💬 Type your message here...", key="chat_input"):
+            prompt = st.chat_input(
+                "💬 Type your message here...", 
+                key="chat_input"
+            )
+            
+            if prompt:
                 process_message(prompt)
                 st.rerun()
         else:
-            st.chat_input("💬 Initialize system to start chatting...", key="chat_input_disabled", disabled=True)
-        # 🔼🔼🔼 END: CHAT CODE 🔼🔼🔼
+            st.chat_input(
+                "💬 Initialize system to start chatting...", 
+                key="chat_input_disabled", 
+                disabled=True
+            )
     
-    # ==========================================
-    # TAB 2: TICKET MANAGEMENT - ALREADY DONE!
-    # ==========================================
     with main_tab2:
         ticket_dashboard_tab()
-        
+
 
 TICKET_STYLES = """
 <style>
@@ -1264,7 +1297,6 @@ def show_create_ticket(user):
                         if resp.status_code == 200:
                             ticket = resp.json()
                             st.success(f"✅ Created: **{ticket['ticket_id']}**")
-                            st.balloons()
                             time.sleep(2)
                             st.rerun()
                         else:
@@ -1504,6 +1536,7 @@ def show_ticket_history(ticket_id):
     except:
         st.error("Failed to load history")
 
+
 def process_message(prompt):
     """Process and respond to user message"""
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -1549,6 +1582,9 @@ def main():
         st.session_state.docs_processed = 0
     
     initialize_session_state()
+
+    if 'rag_system' not in st.session_state:
+        st.session_state.rag_system = None
     
     # Route to appropriate page
     if not st.session_state.logged_in:

@@ -20,5 +20,6 @@ class Config:
     AUTO_ESCALATION_SCHEDULAR = os.environ.get("AUTO_ESCALATION_SCHEDULAR", 5) #5 minutes
 
     PROJECT_ROOT = pathlib.Path(__file__).parent.parent.parent
+    KNOWLEDGE_BASE_DIR = "./data/knowledge_base_files"
 
     
