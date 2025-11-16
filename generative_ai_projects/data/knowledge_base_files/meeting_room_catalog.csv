@@ -1,0 +1,6 @@
+RoomName,Floor,Capacity,HasProjector,HasWhiteboard,HasVideoConference
+Innovation Station,3,10,Yes,Yes,Yes
+The Think Tank,3,6,Yes,No,No
+Collaboration Hub,4,12,Yes,Yes,Yes
+The Nook,4,4,No,Yes,No
+Boardroom One,5,20,Yes,Yes,Yes
