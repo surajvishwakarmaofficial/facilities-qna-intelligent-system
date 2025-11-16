@@ -309,7 +309,7 @@ async def start_scheduler():
         # Run escalation
         scheduler.add_job(
             func=lambda: check_and_escalate_tickets(db_manager.get_session()),
-            trigger=IntervalTrigger(minutes=Config.AUTO_ESCALATION_SCHEDULAR), #TODO: change 24 hours
+            trigger=IntervalTrigger(minutes=int(Config.AUTO_ESCALATION_SCHEDULAR)), #TODO: change 24 hours
             id='auto_escalate_tickets',
             name='Auto-escalate inactive tickets',
             replace_existing=True
