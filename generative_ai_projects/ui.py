@@ -1765,7 +1765,7 @@ def display_ticket_card(ticket, user_id, is_admin):
     
     # Detail view
     if st.session_state.get(f"detail_{key_prefix}", False):
-        view_ticket_details(ticket, key_prefix)
+        view_ticket_details(ticket)
         if st.button("Close", key=f"cd_{key_prefix}", use_container_width=True):
             st.session_state[f"detail_{key_prefix}"] = False
             st.rerun()
@@ -1877,40 +1877,52 @@ def escalate_ticket(ticket_id, user_id):
     except:
         st.error("🔴 Error")
 
-
 def show_ticket_history(ticket_id, key_prefix):
-    """Display ticket history"""
+    """
+    Fetches and displays the detailed history of a ticket in a user-friendly format.
+    """
+    st.markdown(f"### 📜 Ticket History for {ticket_id}")
+    
     try:
         resp = requests.get(
             f"{Config.API_URL}/api/tickets/{ticket_id}/history",
             timeout=10
         )
+        resp.raise_for_status() 
         
-        if resp.status_code == 200:
-            data = resp.json()
-            history = data.get('history', [])
-            
-            st.markdown("### 📜 Ticket History")
-            
-            if not history:
-                st.info("No history available")
-            else:
-                for idx, entry in enumerate(history):
-                    with st.container():
-                        col1, col2 = st.columns([3, 1])
-                        with col1:
-                            st.markdown(f"**{entry['changed_by']}** - _{entry['comment']}_")
-                        with col2:
-                            st.caption(entry['changed_at'][:10])
-                        
-                        if idx < len(history) - 1:
-                            st.markdown("---")
-        else:
-            st.error("❌ Failed to load history")
-    
+        data = resp.json()
+        history = data.get('history', [])
+        
+        if not history:
+            st.info("No history is available for this ticket.")
+            return
+
+        for entry in history:
+            changed_by = entry.get('changed_by', 'N/A')
+            old_status = entry.get('old_status')
+            new_status = entry.get('new_status')
+            comment = entry.get('comment', 'No comment provided.')
+            changed_at = entry.get('changed_at', '').replace('T', ' ')[:19]
+
+            with st.container():
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.markdown(f"**Changed by:** `{changed_by}`")
+                with col2:
+                    st.caption(f"{changed_at}")
+
+                if old_status and new_status and old_status != new_status:
+                    st.markdown(f"**Status Change:** `{old_status}` → **`{new_status}`**")
+                
+                st.info(f"**Comment:** {comment}")
+                
+                st.markdown("---")
+
+    except requests.exceptions.RequestException as e:
+        st.error(f"❌ Network Error: Failed to load ticket history. Please try again later. ({e})")
     except Exception as e:
-        st.error(f"❌ Error: {str(e)}")
-        
+        st.error(f"❌ An unexpected error occurred: {str(e)}")
+
 def render_chat_history_sidebar(user_id):
     st.sidebar.title("Chat History")
     if st.sidebar.button("➕ New Chat", use_container_width=True, type="primary"):
