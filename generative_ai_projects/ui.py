@@ -17,6 +17,12 @@ dotenv.load_dotenv()
 
 KNOWLEDGE_BASE_DIR = "./data/knowledge_base_files"
 
+if 'active_tab' not in st.session_state:
+    st.session_state.active_tab = 0
+
+if 'ticket_just_created' not in st.session_state:
+    st.session_state.ticket_just_created = False
+
 st.markdown("""
 <style>
     /* Global Styles */
@@ -966,7 +972,7 @@ def dashboard():
             st.session_state.clear()
             st.rerun()
     
-    main_tab1, main_tab2 = st.tabs(["💬 AI Assistant", "🎫 Ticket Management"])
+    main_tab1, main_tab2 = st.tabs(["AI Assistant", "Ticket Management"])
     
     with main_tab1:
         # Render chat history in sidebar
@@ -974,7 +980,7 @@ def dashboard():
         
         with st.sidebar:
             st.markdown("---")
-            st.markdown("### ⚡ System Control")
+            st.markdown("### System Control")
             
             if not st.session_state.system_initialized:
                 if st.button("🚀 Initialize Knowledge Base", type="primary", use_container_width=True):
@@ -1386,7 +1392,7 @@ def ticket_dashboard_tab():
     st.markdown(TICKET_STYLES, unsafe_allow_html=True)
     user = st.session_state.user_data
     
-    st.markdown("### 📊 Ticket Dashboard Overview")
+    st.markdown("### Ticket Dashboard Overview")
     
     try:
         stats_response = requests.get(f"{Config.API_URL}/api/tickets/stats/dashboard", timeout=5)
@@ -1396,30 +1402,30 @@ def ticket_dashboard_tab():
             col1, col2, col3, col4, col5 = st.columns(5)
             
             with col1:
-                st.markdown(f'<div class="stats-mini-card"><div class="stats-mini-value">{stats.get("total_tickets", 0)}</div><div class="stats-mini-label">📊 Total</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stats-mini-card"><div class="stats-mini-value">{stats.get("total_tickets", 0)}</div><div class="stats-mini-label">Total Tickets</div></div>', unsafe_allow_html=True)
             with col2:
-                st.markdown(f'<div class="stats-mini-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);"><div class="stats-mini-value">{stats.get("open", 0)}</div><div class="stats-mini-label">🔓 Open</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stats-mini-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);"><div class="stats-mini-value">{stats.get("open", 0)}</div><div class="stats-mini-label">Open</div></div>', unsafe_allow_html=True)
             with col3:
-                st.markdown(f'<div class="stats-mini-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);"><div class="stats-mini-value">{stats.get("in_progress", 0)}</div><div class="stats-mini-label">⚙️ Progress</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stats-mini-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);"><div class="stats-mini-value">{stats.get("in_progress", 0)}</div><div class="stats-mini-label">In Progress</div></div>', unsafe_allow_html=True)
             with col4:
-                st.markdown(f'<div class="stats-mini-card" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);"><div class="stats-mini-value">{stats.get("escalated", 0)}</div><div class="stats-mini-label">🔥 Escalated</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stats-mini-card" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);"><div class="stats-mini-value">{stats.get("escalated", 0)}</div><div class="stats-mini-label">Escalated</div></div>', unsafe_allow_html=True)
             with col5:
-                st.markdown(f'<div class="stats-mini-card" style="background: linear-gradient(135deg, #30cfd0 0%, #330867 100%);"><div class="stats-mini-value">{stats.get("resolved", 0)}</div><div class="stats-mini-label">✅ Resolved</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stats-mini-card" style="background: linear-gradient(135deg, #30cfd0 0%, #330867 100%);"><div class="stats-mini-value">{stats.get("resolved", 0)}</div><div class="stats-mini-label">Resolved</div></div>', unsafe_allow_html=True)
             
             st.markdown("<br>", unsafe_allow_html=True)
             col_s1, col_s2, col_s3 = st.columns(3)
             with col_s1:
-                st.metric("🔥 Active Critical", stats.get('active_critical', 0))
+                st.metric("Active Critical", stats.get('active_critical', 0))
             with col_s2:
-                st.metric("⚠️ Active High", stats.get('active_high', 0))
+                st.metric("Active High", stats.get('active_high', 0))
             with col_s3:
-                st.metric("📈 Resolution Rate", f"{stats.get('resolution_rate', 0)}%")
+                st.metric("Resolution Rate", f"{stats.get('resolution_rate', 0)}%")
     except:
-        st.warning("⚠️ Could not load statistics")
+        st.warning("Could not load statistics")
     
     st.markdown("<br>", unsafe_allow_html=True)
     
-    tab1, tab2, tab3 = st.tabs(["📋 My Tickets", "➕ Create Ticket", "🔍 All Tickets"])
+    tab1, tab2, tab3 = st.tabs(["My Tickets", "Create Ticket", "All Tickets"])
     
     with tab1:
         show_my_tickets(user)
@@ -1433,9 +1439,9 @@ def ticket_dashboard_tab():
 
 def show_my_tickets(user):
     """My Tickets Tab"""
-    st.markdown("### 🎫 My Tickets")
+    st.markdown("### My Tickets")
     
-    with st.expander("🔍 Filter & Sort", expanded=False):
+    with st.expander("Filter & Sort", expanded=False):
         col1, col2, col3 = st.columns(3)
         with col1:
             f_status = st.selectbox("Status", ["All", "Open", "Assigned", "In Progress", "On Hold", "Escalated", "Resolved", "Closed"], key="my_status")
@@ -1466,75 +1472,46 @@ def show_my_tickets(user):
                 tickets = sorted(tickets, key=lambda x: x['created_at'], reverse=True)
             
             if not tickets:
-                st.markdown('<div class="empty-state"><div class="empty-state-icon">📭</div><h3>No tickets found</h3></div>', unsafe_allow_html=True)
+                st.info("No tickets found")
             else:
                 st.markdown(f"**{len(tickets)} ticket(s)**")
                 for t in tickets:
                     display_ticket_card(t, user['id'], False)
         else:
-            st.error(f"❌ Failed: {response.status_code}")
+            st.error(f"Failed: {response.status_code}")
     except requests.exceptions.ConnectionError:
-        st.error("🔴 Server connection failed")
+        st.error("Server connection failed")
     except Exception as e:
-        st.error(f"⚠️ Error: {e}")
-
-
-def show_create_ticket(user):
-    """Create Ticket Tab"""
-    st.markdown("### ➕ Create New Ticket")
-    st.info("💡 Fill the form to submit a support request")
-    
-    with st.form("create_form", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            category = st.selectbox("📂 Category *", ["IT Support", "Facilities", "Security", "HR", "Finance", "Operations", "Maintenance", "Equipment", "Other"])
-        with col2:
-            priority = st.selectbox("⚡ Priority *", ["Low", "Medium", "High", "Critical"], index=1)
-        
-        description = st.text_area("📝 Description *", height=150, placeholder="Describe your issue...")
-        
-        submit = st.form_submit_button("🎫 Create Ticket", use_container_width=True, type="primary")
-        
-        if submit:
-            if not description.strip() or len(description.strip()) < 10:
-                st.error("📝 Description too short (min 10 chars)")
-            else:
-                with st.spinner("Creating..."):
-                    try:
-                        resp = requests.post(f"{Config.API_URL}/api/tickets/create", json={
-                            "user_id": user['id'],
-                            "category": category,
-                            "description": description.strip(),
-                            "priority": priority
-                        }, timeout=10)
-                        
-                        if resp.status_code == 200:
-                            ticket = resp.json()
-                            st.success(f"✅ Created: **{ticket['ticket_id']}**")
-                            time.sleep(2)
-                            st.rerun()
-                        else:
-                            st.error(f"❌ Failed: {resp.json().get('detail', 'Error')}")
-                    except:
-                        st.error("🔴 Server error")
-
+        st.error(f"Error: {e}")
 
 def show_all_tickets(user):
     """All Tickets Tab (Admin)"""
     if user.get('role') not in ['admin', 'manager']:
-        st.warning("🔒 Admin access required")
+        st.warning("⚠️ Admin access required")
         return
     
-    st.markdown("### 🔍 All Tickets (Admin)")
+    st.markdown("### All Tickets (Admin)")
     
-    with st.expander("🔍 Filters", expanded=True):
+    with st.expander("Filters", expanded=True):
         col1, col2, col3 = st.columns(3)
         with col1:
-            a_status = st.selectbox("Status", ["All", "Open", "Assigned", "In Progress", "On Hold", "Escalated", "Resolved", "Closed"], key="all_status")
+            a_status = st.selectbox(
+                "Status", 
+                ["All", "Open", "Assigned", "In Progress", "On Hold", "Escalated", "Resolved", "Closed"],
+                key="all_status"
+            )
         with col2:
-            a_priority = st.selectbox("Priority", ["All", "Critical", "High", "Medium", "Low"], key="all_priority")
+            a_priority = st.selectbox(
+                "Priority", 
+                ["All", "Critical", "High", "Medium", "Low"],
+                key="all_priority"
+            )
         with col3:
-            a_escalated = st.selectbox("Escalation", ["All", "Escalated Only", "Non-Escalated"], key="all_esc")
+            a_escalated = st.selectbox(
+                "Escalation", 
+                ["All", "Escalated Only", "Non-Escalated"],
+                key="all_esc"
+            )
     
     try:
         params = {}
@@ -1547,34 +1524,199 @@ def show_all_tickets(user):
         elif a_escalated == "Non-Escalated":
             params['escalated'] = False
         
-        resp = requests.get(f"{Config.API_URL}/api/tickets/all", params=params, timeout=10)
+        with st.spinner("Loading all tickets..."):
+            resp = requests.get(
+                f"{Config.API_URL}/api/tickets/all",
+                params=params,
+                timeout=10
+            )
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            tickets = data.get('tickets', [])
+            total = data.get('total', len(tickets))
+            
+            if not tickets:
+                st.info("📭 No tickets match the selected filters")
+            else:
+                st.markdown(f"**{total} ticket(s) found**")
+                
+                # Display tickets (newest first - already sorted by backend)
+                for ticket in tickets:
+                    display_ticket_card(ticket, user['id'], is_admin=True)
+        else:
+            st.error(f"❌ Failed to fetch tickets (Status: {resp.status_code})")
+            st.error(f"Response: {resp.text}")
+            
+    except requests.exceptions.ConnectionError:
+        st.error("❌ Cannot connect to API server")
+        st.info(f"Attempting to reach: {Config.API_URL}/api/tickets/all")
+    except requests.exceptions.Timeout:
+        st.error("❌ Request timeout")
+    except Exception as e:
+        st.error(f"❌ Error: {type(e).__name__}")
+        st.error(f"Details: {str(e)}")
+
+def show_create_ticket(user):
+    """Create Ticket Tab"""
+    st.markdown("### Create New Ticket")
+    st.info("Fill the form to submit a support request")
+    
+    with st.form("create_form", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            category = st.selectbox("Category *", [
+                "IT Support", "Facilities", "Security", "HR", 
+                "Finance", "Operations", "Maintenance", "Equipment", "Other"
+            ])
+        with col2:
+            priority = st.selectbox("Priority *", 
+                ["Low", "Medium", "High", "Critical"], 
+                index=1
+            )
+        
+        description = st.text_area(
+            "Description *", 
+            height=150, 
+            placeholder="Describe your issue in detail..."
+        )
+        
+        submit = st.form_submit_button(
+            "Create Ticket", 
+            use_container_width=True, 
+            type="primary"
+        )
+        
+        if submit:
+            if not description.strip() or len(description.strip()) < 10:
+                st.error("❌ Description must be at least 10 characters")
+            else:
+                with st.spinner("Creating ticket..."):
+                    try:
+                        resp = requests.post(
+                            f"{Config.API_URL}/api/tickets/create",
+                            json={
+                                "user_id": user['id'],
+                                "category": category,
+                                "description": description.strip(),
+                                "priority": priority
+                            },
+                            timeout=10
+                        )
+                        
+                        if resp.status_code == 200:
+                            ticket = resp.json()
+                            st.success(f"✅ Ticket Created: **{ticket['ticket_id']}**")
+                            
+                            # Set flags to switch to "My Tickets" tab
+                            st.session_state.active_tab = 0  # Index 0 = My Tickets
+                            st.session_state.ticket_just_created = True
+                            
+                            time.sleep(1.5)
+                            st.rerun()
+                        else:
+                            error_detail = resp.json().get('detail', 'Unknown error')
+                            st.error(f"❌ Failed: {error_detail}")
+                            
+                    except requests.exceptions.ConnectionError:
+                        st.error("❌ Cannot connect to server. Is the API running?")
+                    except requests.exceptions.Timeout:
+                        st.error("❌ Request timeout")
+                    except Exception as e:
+                        st.error(f"❌ Error: {str(e)}")
+
+def show_my_tickets(user):
+    """My Tickets Tab"""
+    st.markdown("### My Tickets")
+    
+    # Show success message if ticket was just created
+    if st.session_state.ticket_just_created:
+        st.success("✅ Your ticket has been created successfully!")
+        st.session_state.ticket_just_created = False
+    
+    # Filters
+    with st.expander("Filters", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            filter_status = st.selectbox(
+                "Status", 
+                ["All", "Open", "Assigned", "In Progress", "On Hold", "Escalated", "Resolved", "Closed"],
+                key="my_status"
+            )
+        with col2:
+            filter_priority = st.selectbox(
+                "Priority", 
+                ["All", "Critical", "High", "Medium", "Low"],
+                key="my_priority"
+            )
+    
+    try:
+        params = {}
+        if filter_status != "All":
+            params['status'] = filter_status
+        if filter_priority != "All":
+            params['priority'] = filter_priority
+        
+        with st.spinner("Loading your tickets..."):
+            resp = requests.get(
+                f"{Config.API_URL}/api/tickets/user/{user['id']}",
+                params=params,
+                timeout=10
+            )
         
         if resp.status_code == 200:
             data = resp.json()
             tickets = data.get('tickets', [])
             
             if not tickets:
-                st.info("📭 No tickets match filters")
+                st.info("📭 No tickets found")
             else:
                 st.markdown(f"**{len(tickets)} ticket(s)**")
-                for t in tickets:
-                    display_ticket_card(t, user['id'], True)
+                
+                # Display tickets (newest first - already sorted by backend)
+                for ticket in tickets:
+                    display_ticket_card(ticket, user['id'], is_admin=False)
         else:
-            st.error(f"❌ Failed: {resp.status_code}")
-    except:
-        st.error("🔴 Server error")
-
-
+            st.error(f"❌ Failed to load tickets (Status: {resp.status_code})")
+            
+    except requests.exceptions.ConnectionError:
+        st.error("❌ Cannot connect to server")
+    except Exception as e:
+        st.error(f"❌ Error: {str(e)}")
 def display_ticket_card(ticket, user_id, is_admin):
-    """Display ticket card"""
-    status_map = {"Open": "open", "Assigned": "assigned", "In Progress": "in-progress", "On Hold": "on-hold", "Escalated": "escalated", "Resolved": "resolved", "Closed": "closed"}
-    priority_map = {"Critical": "critical", "High": "high", "Medium": "medium", "Low": "low"}
+    """Display ticket card with unique keys"""
+    # Create unique key prefix based on context
+    key_prefix = f"admin_{ticket['ticket_id']}" if is_admin else f"user_{ticket['ticket_id']}"
+    
+    status_map = {
+        "Open": "open", 
+        "Assigned": "assigned", 
+        "In Progress": "in-progress", 
+        "On Hold": "on-hold", 
+        "Escalated": "escalated", 
+        "Resolved": "resolved", 
+        "Closed": "closed"
+    }
+    priority_map = {
+        "Critical": "critical", 
+        "High": "high", 
+        "Medium": "medium", 
+        "Low": "low"
+    }
     
     status_cls = status_map.get(ticket['status'], 'open')
     priority_cls = priority_map.get(ticket['priority'], 'medium')
     
     desc = ticket['description'][:200] + ("..." if len(ticket['description']) > 200 else "")
     
+    # Build escalation HTML parts consistently as spans inside a container div
+    escalation_html = ""
+    if ticket.get('escalated', False):
+        escalation_html += "<span style='color: #dc3545; font-weight: 700; margin-right: 0.5rem;'>Level {}</span>".format(ticket['escalation_level'])
+    elif ticket.get('hours_until_escalation', 0) > 0:
+        escalation_html += "<span>Escalates in {:.1f}h</span>".format(ticket['hours_until_escalation'])
+    
+    # Ticket card HTML
     st.markdown(f"""
         <div class="ticket-card">
             <div class="ticket-header">
@@ -1585,60 +1727,63 @@ def display_ticket_card(ticket, user_id, is_admin):
                 <span class="ticket-status-badge status-{status_cls}">{ticket['status']}</span>
             </div>
             <div style="margin: 1rem 0;">
-                <strong>📂 {ticket['category']}</strong><br><br>
-                <strong>📝 Description:</strong><br>
+                <strong>{ticket['category']}</strong><br><br>
+                <strong>Description:</strong><br>
                 <div style="color: #555; margin-top: 0.5rem;">{desc}</div>
             </div>
             <div class="ticket-meta">
-                <span>🕒 {ticket['age_hours']:.1f}h old</span>
-                <span>📅 {ticket['created_at'][:10]}</span>
-                {f"<span style='color: #dc3545; font-weight: 700;'>⚡ Level {ticket['escalation_level']}</span>" if ticket['escalated'] else ""}
-                {f"<span>⏱️ Escalates in {ticket['hours_until_escalation']:.1f}h</span>" if ticket.get('hours_until_escalation', 0) > 0 and not ticket['escalated'] else ""}
+                <span style="margin-right: 1rem;">{ticket['age_hours']:.1f}h old</span>
+                <span style="margin-right: 1rem;">{ticket['created_at'][:10]}</span>
+                {escalation_html}
             </div>
-        </div>""", 
-        unsafe_allow_html=True)
-    
+        </div>
+    """, 
+    unsafe_allow_html=True
+    )
+    # Action buttons with unique keys
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        if st.button("👁️ View", key=f"v_{ticket['ticket_id']}", use_container_width=True):
-            st.session_state[f"detail_{ticket['ticket_id']}"] = True
+        if st.button("View", key=f"v_{key_prefix}", use_container_width=True):
+            st.session_state[f"detail_{key_prefix}"] = True
             st.rerun()
     
     with col2:
-        if st.button("📝 Update", key=f"u_{ticket['ticket_id']}", use_container_width=True):
-            st.session_state[f"update_{ticket['ticket_id']}"] = True
+        if st.button("Update", key=f"u_{key_prefix}", use_container_width=True):
+            st.session_state[f"update_{key_prefix}"] = True
             st.rerun()
     
     with col3:
         if ticket['status'] not in ['Resolved', 'Closed', 'Escalated']:
-            if st.button("🔥 Escalate", key=f"e_{ticket['ticket_id']}", use_container_width=True):
-                escalate_ticket(ticket['ticket_id'], user_id)
+            if st.button("Escalate", key=f"e_{key_prefix}", use_container_width=True):
+                escalate_ticket(ticket['ticket_id'], user_id, key_prefix)
     
     with col4:
-        if st.button("📜 History", key=f"h_{ticket['ticket_id']}", use_container_width=True):
-            st.session_state[f"history_{ticket['ticket_id']}"] = True
+        if st.button("History", key=f"h_{key_prefix}", use_container_width=True):
+            st.session_state[f"history_{key_prefix}"] = True
             st.rerun()
     
-    if st.session_state.get(f"detail_{ticket['ticket_id']}", False):
-        view_ticket_details(ticket)
-        if st.button("✖️ Close", key=f"cd_{ticket['ticket_id']}", use_container_width=True):
-            st.session_state[f"detail_{ticket['ticket_id']}"] = False
+    # Detail view
+    if st.session_state.get(f"detail_{key_prefix}", False):
+        view_ticket_details(ticket, key_prefix)
+        if st.button("Close", key=f"cd_{key_prefix}", use_container_width=True):
+            st.session_state[f"detail_{key_prefix}"] = False
             st.rerun()
     
-    if st.session_state.get(f"update_{ticket['ticket_id']}", False):
-        update_ticket_modal(ticket, user_id, is_admin)
+    # Update modal
+    if st.session_state.get(f"update_{key_prefix}", False):
+        update_ticket_modal(ticket, user_id, is_admin, key_prefix)
     
-    if st.session_state.get(f"history_{ticket['ticket_id']}", False):
-        show_ticket_history(ticket['ticket_id'])
-        if st.button("✖️ Close", key=f"ch_{ticket['ticket_id']}", use_container_width=True):
-            st.session_state[f"history_{ticket['ticket_id']}"] = False
+    # History view
+    if st.session_state.get(f"history_{key_prefix}", False):
+        show_ticket_history(ticket['ticket_id'], key_prefix)
+        if st.button("Close", key=f"ch_{key_prefix}", use_container_width=True):
+            st.session_state[f"history_{key_prefix}"] = False
             st.rerun()
-
 
 def view_ticket_details(ticket):
     """View ticket details"""
-    st.markdown(f"### 🎫 {ticket['ticket_id']}")
+    st.markdown(f"### Ticket {ticket['ticket_id']}")
     
     col1, col2 = st.columns(2)
     
@@ -1647,7 +1792,7 @@ def view_ticket_details(ticket):
         **Status:** {ticket['status']}  
         **Priority:** {ticket['priority']}  
         **Category:** {ticket['category']}  
-        **Escalated:** {'✅ Level ' + str(ticket['escalation_level']) if ticket['escalated'] else '❌ No'}  
+        **Escalated:** {'Yes - Level ' + str(ticket['escalation_level']) if ticket['escalated'] else 'No'}  
         **Assigned:** {ticket.get('assigned_to', 'Unassigned')}
         """)
     
@@ -1733,31 +1878,39 @@ def escalate_ticket(ticket_id, user_id):
         st.error("🔴 Error")
 
 
-def show_ticket_history(ticket_id):
-    """Show history"""
+def show_ticket_history(ticket_id, key_prefix):
+    """Display ticket history"""
     try:
-        resp = requests.get(f"{Config.API_URL}/api/tickets/{ticket_id}/history", timeout=5)
+        resp = requests.get(
+            f"{Config.API_URL}/api/tickets/{ticket_id}/history",
+            timeout=10
+        )
         
         if resp.status_code == 200:
             data = resp.json()
             history = data.get('history', [])
             
-            st.markdown(f"### 📜 History: {ticket_id}")
+            st.markdown("### 📜 Ticket History")
             
             if not history:
-                st.info("No changes yet")
+                st.info("No history available")
             else:
-                for h in history:
-                    st.markdown(f'''
-                    <div class="history-entry">
-                        <strong>{h['changed_by']}</strong>: {h['old_status'] or "New"} → <strong>{h['new_status']}</strong><br>
-                        <small style="color: #666;">{h['changed_at'][:19]}</small><br>
-                        <em>{h['comment']}</em>
-                    </div>
-                    ''', unsafe_allow_html=True)
-    except:
-        st.error("Failed to load history")
-
+                for idx, entry in enumerate(history):
+                    with st.container():
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            st.markdown(f"**{entry['changed_by']}** - _{entry['comment']}_")
+                        with col2:
+                            st.caption(entry['changed_at'][:10])
+                        
+                        if idx < len(history) - 1:
+                            st.markdown("---")
+        else:
+            st.error("❌ Failed to load history")
+    
+    except Exception as e:
+        st.error(f"❌ Error: {str(e)}")
+        
 def render_chat_history_sidebar(user_id):
     st.sidebar.title("Chat History")
     if st.sidebar.button("➕ New Chat", use_container_width=True, type="primary"):

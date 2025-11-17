@@ -436,16 +436,67 @@ async def create_ticket(request: TicketCreateRequest, db: Session = Depends(get_
     return format_ticket_response(ticket)
 
 
-@app.get("/api/tickets/{ticket_id}", response_model=TicketResponse)
-async def get_ticket_by_id(ticket_id: str, db: Session = Depends(get_db)):
-    """Get a single ticket by ID"""
-    ticket = db.query(Ticket).filter(Ticket.ticket_id == ticket_id).first()
-    
-    if not ticket:
-        raise HTTPException(404, f"Ticket {ticket_id} not found")
-    
-    return format_ticket_response(ticket)
 
+@app.get("/api/tickets/all", response_model=TicketListResponse)
+async def get_all_tickets(
+    status: Optional[str] = None,
+    priority: Optional[str] = None,
+    escalated: Optional[bool] = None,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    """Get all tickets with filters - ADMIN"""
+    query = db.query(Ticket)
+    
+    if status:
+        query = query.filter(Ticket.status == status)
+    
+    if priority:
+        query = query.filter(Ticket.priority == priority)
+    
+    if escalated is not None:
+        query = query.filter(Ticket.escalated == escalated)
+    
+    tickets = query.order_by(Ticket.created_at.desc()).limit(limit).all()
+    
+    return TicketListResponse(
+        total=len(tickets),
+        tickets=[format_ticket_response(t) for t in tickets]
+    )
+
+@app.get("/api/tickets/stats/dashboard")
+async def get_ticket_stats(db: Session = Depends(get_db)):
+    """Get ticket statistics"""
+    total = db.query(Ticket).count()
+    open_tickets = db.query(Ticket).filter(Ticket.status == TicketStatus.OPEN).count()
+    in_progress = db.query(Ticket).filter(Ticket.status == TicketStatus.IN_PROGRESS).count()
+    escalated = db.query(Ticket).filter(Ticket.escalated == True).count()
+    resolved = db.query(Ticket).filter(Ticket.status == TicketStatus.RESOLVED).count()
+    
+    critical = db.query(Ticket).filter(
+        and_(
+            Ticket.priority == TicketPriority.CRITICAL,
+            Ticket.status.notin_([TicketStatus.RESOLVED, TicketStatus.CLOSED])
+        )
+    ).count()
+    
+    high = db.query(Ticket).filter(
+        and_(
+            Ticket.priority == TicketPriority.HIGH,
+            Ticket.status.notin_([TicketStatus.RESOLVED, TicketStatus.CLOSED])
+        )
+    ).count()
+    
+    return {
+        "total_tickets": total,
+        "open": open_tickets,
+        "in_progress": in_progress,
+        "escalated": escalated,
+        "resolved": resolved,
+        "active_critical": critical,
+        "active_high": high,
+        "resolution_rate": round((resolved / total * 100) if total > 0 else 0, 2)
+    }
 
 @app.get("/api/tickets/user/{user_id}", response_model=TicketListResponse)
 async def get_user_tickets(
@@ -472,34 +523,15 @@ async def get_user_tickets(
     )
 
 
-
-@app.get("/api/tickets/all", response_model=TicketListResponse)
-async def get_all_tickets(
-    status: Optional[str] = None,
-    priority: Optional[str] = None,
-    escalated: Optional[bool] = None,
-    limit: int = 100,
-    db: Session = Depends(get_db)
-):
-    breakpoint()
-    """Get all tickets with filters"""
-    query = db.query(Ticket)
+@app.get("/api/tickets/{ticket_id}", response_model=TicketResponse)
+async def get_ticket_by_id(ticket_id: str, db: Session = Depends(get_db)):
+    """Get a single ticket by ID"""
+    ticket = db.query(Ticket).filter(Ticket.ticket_id == ticket_id).first()
     
-    if status:
-        query = query.filter(Ticket.status == status)
+    if not ticket:
+        raise HTTPException(404, f"Ticket {ticket_id} not found")
     
-    if priority:
-        query = query.filter(Ticket.priority == priority)
-    
-    if escalated is not None:
-        query = query.filter(Ticket.escalated == escalated)
-    
-    tickets = query.order_by(Ticket.created_at.desc()).limit(limit).all()
-    
-    return TicketListResponse(
-        total=len(tickets),
-        tickets=[format_ticket_response(t) for t in tickets]
-    )
+    return format_ticket_response(ticket)
 
 
 @app.patch("/api/tickets/{ticket_id}/status", response_model=TicketResponse)
@@ -630,41 +662,6 @@ async def manual_escalate_ticket(
         "escalation_level": ticket.escalation_level
     }
 
-
-
-@app.get("/api/tickets/stats/dashboard")
-async def get_ticket_stats(db: Session = Depends(get_db)):
-    """Get ticket statistics"""
-    total = db.query(Ticket).count()
-    open_tickets = db.query(Ticket).filter(Ticket.status == TicketStatus.OPEN).count()
-    in_progress = db.query(Ticket).filter(Ticket.status == TicketStatus.IN_PROGRESS).count()
-    escalated = db.query(Ticket).filter(Ticket.escalated == True).count()
-    resolved = db.query(Ticket).filter(Ticket.status == TicketStatus.RESOLVED).count()
-    
-    critical = db.query(Ticket).filter(
-        and_(
-            Ticket.priority == TicketPriority.CRITICAL,
-            Ticket.status.notin_([TicketStatus.RESOLVED, TicketStatus.CLOSED])
-        )
-    ).count()
-    
-    high = db.query(Ticket).filter(
-        and_(
-            Ticket.priority == TicketPriority.HIGH,
-            Ticket.status.notin_([TicketStatus.RESOLVED, TicketStatus.CLOSED])
-        )
-    ).count()
-    
-    return {
-        "total_tickets": total,
-        "open": open_tickets,
-        "in_progress": in_progress,
-        "escalated": escalated,
-        "resolved": resolved,
-        "active_critical": critical,
-        "active_high": high,
-        "resolution_rate": round((resolved / total * 100) if total > 0 else 0, 2)
-    }
 
 @app.post("/api/admin/run-escalation")
 async def manual_run_escalation(db: Session = Depends(get_db)):
