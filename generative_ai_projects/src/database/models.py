@@ -65,3 +65,30 @@ class Session(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     last_activity = Column(DateTime, default=datetime.utcnow)
     context = Column(String)  # JSON string
+
+class ChatHistory(Base):
+    """
+    Chat History Model - Stores conversation history for each user
+    """
+    __tablename__ = 'chat_history'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    conversation_id = Column(
+        String(36), 
+        unique=True, 
+        index=True, 
+        default=lambda: str(uuid.uuid4()),
+        nullable=False
+    )
+    user_id = Column(String, index=True, nullable=False)
+    title = Column(String(255), default="", nullable=False)
+    messages = Column(Text, nullable=True)  # JSON string
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime, 
+        default=datetime.utcnow, 
+        onupdate=datetime.utcnow, 
+        nullable=False
+    )
+    is_archived = Column(Boolean, default=False, nullable=False)
+

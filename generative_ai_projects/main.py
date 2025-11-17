@@ -14,7 +14,7 @@ from src.rag.retriever import KnowledgeRetriever
 from src.agents.facilities_agent import FacilitiesAgent
 from src.database.session import DatabaseManager
 from sqlalchemy.orm import Session
-from src.database.models import Ticket, TicketHistory
+from src.database.models import Ticket, TicketHistory, ChatHistory
 from src.utils.rate_limiter import RateLimiter
 from src.utils.cache import ResponseCache
 import dotenv
@@ -672,3 +672,194 @@ async def manual_run_escalation(db: Session = Depends(get_db)):
     check_and_escalate_tickets(db)
     return {"message": "Escalation check completed"}
 
+
+import json
+from typing import Optional, List
+from pydantic import BaseModel
+from fastapi import HTTPException, Depends
+from sqlalchemy.orm import Session
+from datetime import datetime
+import uuid
+
+class SaveChatHistoryRequest(BaseModel):
+    user_id: str
+    conversation_id: Optional[str] = None
+    title: Optional[str] = None
+    messages: List[dict]
+
+class UpdateTitleRequest(BaseModel):
+    title: str
+
+@app.post("/api/chat-history/save")
+async def save_or_update_chat_history(request: SaveChatHistoryRequest, db: Session = Depends(get_db)):
+    """
+    Saves a new chat or updates an existing one with corrected title logic.
+    """
+    try:
+        chat = None
+        # Try to find an existing chat if an ID is provided
+        if request.conversation_id:
+            chat = db.query(ChatHistory).filter(
+                ChatHistory.conversation_id == request.conversation_id,
+                ChatHistory.user_id == request.user_id
+            ).first()
+
+        # If an existing chat is found, update it
+        if chat:
+            # Update title only if provided and not empty
+            if request.title and request.title.strip():
+                chat.title = request.title
+            # If title is still "New Chat" and we have messages, update with first message
+            elif chat.title == "New Chat" and request.messages:
+                first_user_msg = next((msg for msg in request.messages if msg.get('role') == 'user'), None)
+                if first_user_msg:
+                    content = first_user_msg.get('content', '')
+                    chat.title = content[:100] if len(content) > 100 else content
+            
+            chat.messages = json.dumps(request.messages)
+            chat.updated_at = datetime.utcnow()
+        
+        # If no chat was found (it's a new conversation)
+        else:
+            new_conv_id = request.conversation_id or str(uuid.uuid4())
+            
+            # Determine title: use provided title, or first user message, or "New Chat"
+            title = "New Chat"
+            if request.title and request.title.strip():
+                title = request.title
+            elif request.messages:
+                first_user_msg = next((msg for msg in request.messages if msg.get('role') == 'user'), None)
+                if first_user_msg:
+                    content = first_user_msg.get('content', '')
+                    title = content[:100] if len(content) > 100 else content
+            
+            chat = ChatHistory(
+                conversation_id=new_conv_id,
+                user_id=request.user_id,
+                title=title,
+                messages=json.dumps(request.messages),
+                is_archived=False  # Explicitly set to False
+            )
+            db.add(chat)
+        
+        db.commit()
+        db.refresh(chat)
+        return {
+            "success": True, 
+            "conversation_id": chat.conversation_id,
+            "title": chat.title
+        }
+    except Exception as e:
+        db.rollback()
+        print(f"Error saving chat: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to save chat history: {str(e)}")
+
+@app.get("/api/chat-history/{user_id}")
+async def get_user_chat_histories(user_id: str, db: Session = Depends(get_db)):
+    """Gets all non-archived chat histories for a user."""
+    try:
+        # First, let's check ALL records for this user (including archived)
+        all_chats = db.query(ChatHistory).filter(
+            ChatHistory.user_id == user_id
+        ).all()
+        
+        print(f"\n=== DEBUG: Total chats for user {user_id}: {len(all_chats)} ===")
+        for chat in all_chats:
+            print(f"ID: {chat.conversation_id}, Title: {chat.title}, Archived: {chat.is_archived}, Updated: {chat.updated_at}")
+        
+        # Now get only non-archived
+        histories = db.query(ChatHistory).filter(
+            ChatHistory.user_id == user_id,
+            ChatHistory.is_archived == False
+        ).order_by(ChatHistory.updated_at.desc()).all()
+
+        print(f"=== Non-archived chats: {len(histories)} ===\n")
+
+        return {
+            "success": True,
+            "histories": [{
+                "conversation_id": h.conversation_id,
+                "title": h.title,
+                "updated_at": h.updated_at.isoformat() + 'Z',
+                "created_at": h.created_at.isoformat() + 'Z',
+                "is_archived": h.is_archived
+            } for h in histories]
+        }
+    except Exception as e:
+        print(f"Error fetching histories: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch histories: {str(e)}")
+
+@app.get("/api/chat-history/conversation/{conversation_id}")
+async def get_conversation_details(conversation_id: str, db: Session = Depends(get_db)):
+    """Gets the full message list for a specific conversation."""
+    try:
+        chat = db.query(ChatHistory).filter(ChatHistory.conversation_id == conversation_id).first()
+        if not chat:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        
+        return {
+            "success": True,
+            "messages": json.loads(chat.messages or '[]'),
+            "title": chat.title
+        }
+    except Exception as e:
+        print(f"Error fetching conversation: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch conversation: {str(e)}")
+
+@app.patch("/api/chat-history/{conversation_id}/title")
+async def update_chat_title(conversation_id: str, request: UpdateTitleRequest, db: Session = Depends(get_db)):
+    """Updates the title of a conversation."""
+    try:
+        chat = db.query(ChatHistory).filter(ChatHistory.conversation_id == conversation_id).first()
+        if not chat:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        
+        chat.title = request.title
+        chat.updated_at = datetime.utcnow()
+        db.commit()
+        return {"success": True, "title": chat.title}
+    except Exception as e:
+        db.rollback()
+        print(f"Error updating title: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update title: {str(e)}")
+
+@app.delete("/api/chat-history/{conversation_id}")
+async def delete_chat_history(conversation_id: str, db: Session = Depends(get_db)):
+    """Deletes (archives) a conversation."""
+    try:
+        chat = db.query(ChatHistory).filter(ChatHistory.conversation_id == conversation_id).first()
+        if not chat:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        
+        chat.is_archived = True
+        chat.updated_at = datetime.utcnow()
+        db.commit()
+        return {"success": True, "message": "Chat deleted"}
+    except Exception as e:
+        db.rollback()
+        print(f"Error deleting chat: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete chat: {str(e)}")
+
+@app.get("/api/chat-history/debug/{user_id}")
+async def debug_chat_histories(user_id: str, db: Session = Depends(get_db)):
+    """Debug endpoint to see all chats including archived ones"""
+    try:
+        all_chats = db.query(ChatHistory).filter(
+            ChatHistory.user_id == user_id
+        ).order_by(ChatHistory.updated_at.desc()).all()
+
+        return {
+            "success": True,
+            "total_count": len(all_chats),
+            "chats": [{
+                "conversation_id": h.conversation_id,
+                "title": h.title,
+                "is_archived": h.is_archived,
+                "updated_at": h.updated_at.isoformat() + 'Z',
+                "created_at": h.created_at.isoformat() + 'Z',
+                "message_count": len(json.loads(h.messages or '[]'))
+            } for h in all_chats]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch debug info: {str(e)}")
+    
