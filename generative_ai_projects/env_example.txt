@@ -1,25 +1,48 @@
+# Google AI API Configuration
 GOOGLE_API_KEY=""
+
+# Database Configuration
 SQLITE_DB_URL=""
 
+# Milvus Vector Database Configuration
 MILVUS_URI=""
 MILVUS_TOKEN=""
 
+# Admin User Configuration
 ADMIN_USERNAME=""
 ADMIN_EMAIL=""
 ADMIN_PASSWORD=""
 ADMIN_FULL_NAME=""
 
+# LLM Configuration
 LLM_MODEL=""
 LLM_PROVIDER=""
+
+# Embedding Configuration
 EMBEDDING_PROVIDER=""
 
-API_URL = ""
+# API Configuration
+API_URL=""
 
+# Escalation Configuration
 ESCALATION_MODE=""
 ESCALATION_THRESHOLD=""
 
+# Azure OpenAI Configuration (Optional)
 AZURE_ENDPOINT=""
 AZURE_API_KEY=""
 AZURE_API_VERSION=""
 AZURE_DEPLOYMENT=""
+AZURE_EMBEDDING_DEPLOYMENT=""
+
+# Collection Name
+COLLECTION_NAME=""
+
+# JWT Authentication
+JWT_SECRET_KEY=""
+ALGORITHM=""
+
+# Auto Escalation Scheduler
+AUTO_ESCALATION_SCHEDULAR=""
+
 
