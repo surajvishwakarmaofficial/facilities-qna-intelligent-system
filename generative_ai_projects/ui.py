@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 import streamlit as st
 import requests
 import time
@@ -136,6 +137,57 @@ st.markdown("""
         display: flex;
         align-items: center;
         gap: 0.5rem;
+    }
+    
+    /* Chat History Sidebar Styles */
+    .chat-history-item {
+        background: rgba(255, 255, 255, 0.05);
+        padding: 0.75rem;
+        border-radius: 8px;
+        margin-bottom: 0.5rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border-left: 3px solid transparent;
+    }
+    
+    .chat-history-item:hover {
+        background: rgba(255, 255, 255, 0.1);
+        border-left-color: #667eea;
+        transform: translateX(3px);
+    }
+    
+    .chat-history-item.active {
+        background: rgba(102, 126, 234, 0.2);
+        border-left-color: #667eea;
+    }
+    
+    .chat-history-title {
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: #333;
+        margin-bottom: 0.25rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    
+    .chat-history-date {
+        font-size: 0.75rem;
+        color: #999;
+    }
+    
+    .chat-history-section {
+        margin-bottom: 1.5rem;
+    }
+    
+    .chat-history-section-title {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 0.75rem;
+        padding-left: 0.5rem;
     }
     
     /* Chat messages area styling */
@@ -718,6 +770,7 @@ def login_page():
                                     st.session_state.user_data = data["user"]
                                     st.session_state.messages = []
                                     st.session_state.login_time = datetime.now()
+                                    # st.session_state.current_conversation_id = None
                                     
                                     st.toast('Login successful!', icon='✅')
                                     time.sleep(1.5)
@@ -770,6 +823,130 @@ def login_page():
         """, unsafe_allow_html=True)
 
 
+# ====================== CHAT HISTORY FUNCTIONS ======================
+
+def load_chat_histories(user_id):
+    try:
+        response = requests.get(f"{Config.API_URL}/api/chat-history/{user_id}", timeout=5)
+        return response.json().get('histories', []) if response.ok else []
+    except requests.exceptions.RequestException:
+        st.toast("Error: Failed to load chat history.", icon="❌")
+        return []
+
+def save_chat_history(user_id, conv_id, messages, title=None):
+    try:
+        payload = {"user_id": user_id, "conversation_id": conv_id, "title": title, "messages": messages}
+        response = requests.post(f"{Config.API_URL}/api/chat-history/save", json=payload, timeout=10)
+        return response.json().get('conversation_id') if response.ok else None
+    except requests.exceptions.RequestException:
+        return None
+
+def delete_chat_history(conversation_id):
+    try:
+        response = requests.delete(f"{Config.API_URL}/api/chat-history/{conversation_id}", timeout=5)
+        return response.ok
+    except requests.exceptions.RequestException: return False
+
+def group_histories_by_date(histories):
+    groups = {'Today': [], 'Yesterday': [], 'Previous 7 Days': [], 'Older': []}
+    today = datetime.now().date()
+    for h in sorted(histories, key=lambda x: x['updated_at'], reverse=True):
+        chat_date = datetime.fromisoformat(h['updated_at'].replace('Z', '')).date()
+        if chat_date == today: groups['Today'].append(h)
+        elif chat_date == today - timedelta(days=1): groups['Yesterday'].append(h)
+        elif chat_date > today - timedelta(days=7): groups['Previous 7 Days'].append(h)
+        else: groups['Older'].append(h)
+    return {k: v for k, v in groups.items() if v}
+
+def load_conversation(conversation_id):
+    """Load a specific conversation"""
+    try:
+        response = requests.get(
+            f"{Config.API_URL}/api/chat-history/conversation/{conversation_id}",
+            timeout=5
+        )
+        if response.status_code == 200:
+            data = response.json()
+            return data.get('messages', [])
+        return []
+    except Exception as e:
+        print(f"Error loading conversation: {e}")
+        return []
+
+
+def group_histories_by_date(histories):
+    """Group chat histories by date (Today, Yesterday, Previous 7 Days, etc.)"""
+    from datetime import datetime, timedelta
+    
+    now = datetime.now()
+    today = now.date()
+    yesterday = today - timedelta(days=1)
+    week_ago = today - timedelta(days=7)
+    month_ago = today - timedelta(days=30)
+    
+    groups = {
+        'Today': [],
+        'Yesterday': [],
+        'Previous 7 Days': [],
+        'Previous 30 Days': [],
+        'Older': []
+    }
+    
+    for history in histories:
+        try:
+            # Parse the updated_at timestamp
+            updated_at = datetime.fromisoformat(history['updated_at'].replace('Z', '+00:00'))
+            chat_date = updated_at.date()
+            
+            if chat_date == today:
+                groups['Today'].append(history)
+            elif chat_date == yesterday:
+                groups['Yesterday'].append(history)
+            elif chat_date > week_ago:
+                groups['Previous 7 Days'].append(history)
+            elif chat_date > month_ago:
+                groups['Previous 30 Days'].append(history)
+            else:
+                groups['Older'].append(history)
+        except Exception as e:
+            print(f"Error parsing date: {e}")
+            groups['Older'].append(history)
+    
+    # Remove empty groups
+    return {k: v for k, v in groups.items() if v}
+
+
+def render_chat_history_sidebar(user_id):
+    st.sidebar.title("Chat History")
+    if st.sidebar.button("➕ New Chat", use_container_width=True, type="primary"):
+        st.session_state.messages = []
+        st.session_state.current_conversation_id = None
+        st.rerun()
+    
+    st.sidebar.markdown("---")
+    histories = load_chat_histories(user_id)
+    if not histories:
+        st.sidebar.caption("No conversations yet.")
+        return
+
+    for group, chats in group_histories_by_date(histories).items():
+        st.sidebar.markdown(f'<p class="chat-history-section-title">{group}</p>', unsafe_allow_html=True)
+        for chat in chats:
+            conv_id = chat['conversation_id']
+            is_active = st.session_state.current_conversation_id == conv_id
+            col1, col2 = st.sidebar.columns([0.8, 0.2])
+            with col1:
+                if st.button(chat['title'], key=f"hist_{conv_id}", use_container_width=True, type="primary" if is_active else "secondary"):
+                    st.session_state.messages = load_conversation(conv_id)
+                    st.session_state.current_conversation_id = conv_id
+                    st.rerun()
+            with col2:
+                if st.button("🗑️", key=f"del_{conv_id}", help="Delete chat", use_container_width=True):
+                    if delete_chat_history(conv_id):
+                        if is_active:
+                            st.session_state.messages, st.session_state.current_conversation_id = [], None
+                        st.toast("Chat deleted!", icon="🗑️"); time.sleep(1); st.rerun()
+
 def dashboard():
     """Main dashboard with tickets"""
     user = st.session_state.user_data
@@ -779,13 +956,24 @@ def dashboard():
     with col_l:
         st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
         if st.button("🚪 Logout", use_container_width=True):
+            # Save current chat before logout
+            if st.session_state.messages and user:
+                save_chat_history(
+                    user['id'],
+                    st.session_state.current_conversation_id,
+                    st.session_state.messages
+                )
             st.session_state.clear()
             st.rerun()
     
     main_tab1, main_tab2 = st.tabs(["💬 AI Assistant", "🎫 Ticket Management"])
     
     with main_tab1:
+        # Render chat history in sidebar
+        render_chat_history_sidebar(user['id'])
+        
         with st.sidebar:
+            st.markdown("---")
             st.markdown("### ⚡ System Control")
             
             if not st.session_state.system_initialized:
@@ -892,15 +1080,36 @@ def dashboard():
                 st.markdown("---")
             
             if st.session_state.system_initialized:
-                if st.button("🗑️ Clear Chat", use_container_width=True):
+                if st.button("🗑️ Clear Current Chat", use_container_width=True):
+                    # Save before clearing if there are messages
+                    if st.session_state.messages and user:
+                        save_chat_history(
+                            user['id'],
+                            st.session_state.current_conversation_id,
+                            st.session_state.messages
+                        )
+                    
                     st.session_state.messages = []
+                    st.session_state.current_conversation_id = None
                     if st.session_state.rag_system:
                         st.session_state.rag_system.chat_history = []
                     st.rerun()
             
                 if len(st.session_state.messages) > 0:
                     st.markdown("---")
-                    if st.button("💾 Export Chat", use_container_width=True):
+                    if st.button("💾 Save Chat", use_container_width=True):
+                        conversation_id = save_chat_history(
+                            user['id'],
+                            st.session_state.current_conversation_id,
+                            st.session_state.messages
+                        )
+                        if conversation_id:
+                            st.session_state.current_conversation_id = conversation_id
+                            st.toast("Chat saved!", icon="💾")
+                            time.sleep(1)
+                            st.rerun()
+                    
+                    if st.button("📥 Export Chat", use_container_width=True):
                         chat_export = json.dumps(st.session_state.messages, indent=2)
                         st.download_button(
                             label="📥 Download JSON",
@@ -910,11 +1119,12 @@ def dashboard():
                             use_container_width=True
                         )
         
+        # Chat messages container
         with st.container(height=500, border=False):
             if hasattr(st.session_state, 'sample_question'):
                 prompt = st.session_state.sample_question
                 delattr(st.session_state, 'sample_question')
-                process_message(prompt)
+                process_message(prompt, user['id'])
                 st.rerun()
             
             if len(st.session_state.messages) == 0:
@@ -922,6 +1132,7 @@ def dashboard():
                     <div class="chat-empty">
                         <div class="chat-empty-icon">💬</div>
                         <h3>No messages yet</h3>
+                        <p>Start a conversation or load a previous chat from the sidebar</p>
                     </div>
                 """, unsafe_allow_html=True)
             else:
@@ -961,6 +1172,7 @@ def dashboard():
         
         st.markdown('</div>', unsafe_allow_html=True)
         
+        # Chat input
         if st.session_state.system_initialized:
             prompt = st.chat_input(
                 "💬 Type your message here...", 
@@ -968,7 +1180,7 @@ def dashboard():
             )
             
             if prompt:
-                process_message(prompt)
+                process_message(prompt, user['id'])
                 st.rerun()
         else:
             st.chat_input(
@@ -980,6 +1192,8 @@ def dashboard():
     with main_tab2:
         ticket_dashboard_tab()
 
+
+# ====================== TICKET MANAGEMENT STYLES ======================
 
 TICKET_STYLES = """
 <style>
@@ -1467,29 +1681,37 @@ def update_ticket_modal(ticket, user_id, is_admin):
         assigned = st.text_input("Assign To (User ID)", value=ticket.get('assigned_to', ''))
         notes = st.text_area("Resolution Notes", height=80)
         
-        if st.form_submit_button("💾 Save", use_container_width=True, type="primary"):
-            try:
-                resp = requests.patch(
-                    f"{Config.API_URL}/api/tickets/{ticket['ticket_id']}/status",
-                    params={"user_id": user_id},
-                    json={
-                        "status": new_status,
-                        "priority": new_priority,
-                        "assigned_to": assigned if assigned else None,
-                        "resolution_notes": notes if notes else None
-                    },
-                    timeout=10
-                )
-                
-                if resp.status_code == 200:
-                    st.success("✅ Updated!")
-                    time.sleep(1)
-                    st.session_state[f"update_{ticket['ticket_id']}"] = False
-                    st.rerun()
-                else:
-                    st.error("❌ Failed")
-            except:
-                st.error("🔴 Error")
+        col_btn1, col_btn2 = st.columns(2)
+        
+        with col_btn1:
+            if st.form_submit_button("💾 Save", use_container_width=True, type="primary"):
+                try:
+                    resp = requests.patch(
+                        f"{Config.API_URL}/api/tickets/{ticket['ticket_id']}/status",
+                        params={"user_id": user_id},
+                        json={
+                            "status": new_status,
+                            "priority": new_priority,
+                            "assigned_to": assigned if assigned else None,
+                            "resolution_notes": notes if notes else None
+                        },
+                        timeout=10
+                    )
+                    
+                    if resp.status_code == 200:
+                        st.success("✅ Updated!")
+                        time.sleep(1)
+                        st.session_state[f"update_{ticket['ticket_id']}"] = False
+                        st.rerun()
+                    else:
+                        st.error("❌ Failed")
+                except:
+                    st.error("🔴 Error")
+        
+        with col_btn2:
+            if st.form_submit_button("❌ Cancel", use_container_width=True):
+                st.session_state[f"update_{ticket['ticket_id']}"] = False
+                st.rerun()
 
 
 def escalate_ticket(ticket_id, user_id):
@@ -1536,20 +1758,53 @@ def show_ticket_history(ticket_id):
     except:
         st.error("Failed to load history")
 
+def render_chat_history_sidebar(user_id):
+    st.sidebar.title("Chat History")
+    if st.sidebar.button("➕ New Chat", use_container_width=True, type="primary"):
+        st.session_state.messages = []
+        st.session_state.current_conversation_id = None
+        st.rerun()
+    
+    st.sidebar.markdown("---")
+    histories = load_chat_histories(user_id)
+    if not histories:
+        st.sidebar.caption("No conversations yet.")
+        return
 
-def process_message(prompt):
+    for group, chats in group_histories_by_date(histories).items():
+        st.sidebar.markdown(f'<p class="chat-history-section-title">{group}</p>', unsafe_allow_html=True)
+        for chat in chats:
+            conv_id = chat['conversation_id']
+            is_active = st.session_state.current_conversation_id == conv_id
+            col1, col2 = st.sidebar.columns([0.8, 0.2])
+            with col1:
+                # Use a fallback title if the one from DB is empty for any reason
+                title_to_display = chat.get('title') or "New Chat"
+                if st.button(title_to_display, key=f"hist_{conv_id}", use_container_width=True, type="primary" if is_active else "secondary"):
+                    st.session_state.messages = load_conversation(conv_id)
+                    st.session_state.current_conversation_id = conv_id
+                    st.rerun()
+            with col2:
+                if st.button("🗑️", key=f"del_{conv_id}", help="Delete chat", use_container_width=True):
+                    if delete_chat_history(conv_id):
+                        if is_active:
+                            st.session_state.messages, st.session_state.current_conversation_id = [], None
+                        st.toast("Chat deleted!", icon="🗑️"); time.sleep(1); st.rerun()
+
+def process_message(prompt, user_id):
     """Process and respond to user message"""
     st.session_state.messages.append({"role": "user", "content": prompt})
     
     answer = ""
     source_docs = []
-    
-    if not st.session_state.system_initialized:
-        answer = get_llm_greeting_response(st.session_state.messages, prompt)
-    else:
-        result = st.session_state.rag_system.generate_response(prompt)
-        answer = result["answer"]
-        source_docs = result.get("sources", [])
+
+    with st.spinner("🧠 Thinking..."):
+        if not st.session_state.system_initialized:
+            answer = get_llm_greeting_response(st.session_state.messages, prompt)
+        else:
+            result = st.session_state.rag_system.generate_response(prompt)
+            answer = result["answer"]
+            source_docs = result.get("sources", [])
     
     sources = []
     if source_docs and st.session_state.system_initialized:
@@ -1564,6 +1819,16 @@ def process_message(prompt):
         "sources": sources,
         "timestamp": datetime.now().isoformat()
     })
+    
+    # Auto-save chat after each exchange
+    if len(st.session_state.messages) >= 2:  # At least one user and one assistant message
+        conversation_id = save_chat_history(
+            user_id,
+            st.session_state.current_conversation_id,
+            st.session_state.messages
+        )
+        if conversation_id and not st.session_state.current_conversation_id:
+            st.session_state.current_conversation_id = conversation_id
 
 
 def main():
@@ -1580,6 +1845,7 @@ def main():
         st.session_state.username = ""
         st.session_state.user_data = None
         st.session_state.docs_processed = 0
+        st.session_state.current_conversation_id = None
     
     initialize_session_state()
 
