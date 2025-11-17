@@ -112,7 +112,14 @@ class FacilitiesRAGSystem:
         documents = loader.load()
         processed_documents = []
         for doc in documents:
-            new_metadata = {"title": filename, "source": f"{filename} (Page {doc.metadata.get('page', 'N/A')})", "file_type": "pdf"}
+            new_metadata = {
+                "title": filename, 
+                "source": f"{filename} (Page {doc.metadata.get('page', 0) + 1})", 
+                "file_type": "pdf",
+                "row_number": 0,
+                "sheet_name": "",
+                "section_number": 0
+            }
             processed_doc = Document(page_content=doc.page_content, metadata=new_metadata)
             processed_documents.append(processed_doc)
         return processed_documents
@@ -124,7 +131,15 @@ class FacilitiesRAGSystem:
             for idx, row in df.iterrows():
                 content_parts = [f"{col}: {value}" for col, value in row.items() if pd.notna(value)]
                 content = "\n".join(content_parts)
-                new_metadata = {"title": filename, "source": f"{filename} (Row {idx + 1})", "file_type": "csv", "row_number": idx + 1}
+                # FIX: Added default values for all possible metadata fields for consistency
+                new_metadata = {
+                    "title": filename, 
+                    "source": f"{filename} (Row {idx + 1})", 
+                    "file_type": "csv", 
+                    "row_number": idx + 1,
+                    "sheet_name": "",
+                    "section_number": 0
+                }
                 processed_doc = Document(page_content=content, metadata=new_metadata)
                 processed_documents.append(processed_doc)
             return processed_documents
@@ -141,7 +156,15 @@ class FacilitiesRAGSystem:
                 for idx, row in df.iterrows():
                     content_parts = [f"Sheet: {sheet_name}"] + [f"{col}: {value}" for col, value in row.items() if pd.notna(value)]
                     content = "\n".join(content_parts)
-                    new_metadata = {"title": filename, "source": f"{filename} (Sheet: {sheet_name}, Row {idx + 1})", "file_type": "excel", "sheet_name": sheet_name, "row_number": idx + 1}
+                    
+                    new_metadata = {
+                        "title": filename, 
+                        "source": f"{filename} (Sheet: {sheet_name}, Row {idx + 1})", 
+                        "file_type": "excel", 
+                        "sheet_name": sheet_name, 
+                        "row_number": idx + 1,
+                        "section_number": 0
+                    }
                     processed_doc = Document(page_content=content, metadata=new_metadata)
                     processed_documents.append(processed_doc)
             return processed_documents
@@ -153,12 +176,12 @@ class FacilitiesRAGSystem:
         try:
             with open(temp_file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-            encoding_to_use = 'utf-8'
+
         except UnicodeDecodeError:
             try:
                 with open(temp_file_path, 'r', encoding='latin-1') as f:
                     content = f.read()
-                encoding_to_use = 'latin-1'
+
             except Exception as e:
                 st.error(f"Error processing text file: {str(e)}")
                 return []
@@ -167,7 +190,15 @@ class FacilitiesRAGSystem:
         processed_documents = []
         for idx, paragraph in enumerate(paragraphs):
             if paragraph.strip():
-                new_metadata = {"title": filename, "source": f"{filename} (Section {idx + 1})", "file_type": "txt", "section_number": idx + 1}
+                
+                new_metadata = {
+                    "title": filename, 
+                    "source": f"{filename} (Section {idx + 1})", 
+                    "file_type": "txt", 
+                    "section_number": idx + 1,
+                    "row_number": 0,
+                    "sheet_name": ""
+                }
                 processed_doc = Document(page_content=paragraph.strip(), metadata=new_metadata)
                 processed_documents.append(processed_doc)
         return processed_documents
