@@ -953,9 +953,17 @@ def render_chat_history_sidebar(user_id):
                             st.session_state.messages, st.session_state.current_conversation_id = [], None
                         st.toast("Chat deleted!", icon="🗑️"); time.sleep(1); st.rerun()
 
+# ====================== DASHBOARD PAGE ======================
 def dashboard():
-    """Main dashboard with tickets"""
+    """Main dashboard with AUTO-INITIALIZATION"""
     user = st.session_state.user_data
+    
+    if not st.session_state.system_initialized:
+        if not hasattr(st.session_state, 'rag_system') or st.session_state.rag_system is None:
+            st.session_state.rag_system = FacilitiesRAGSystem(knowledge_base_dir=str(Config.KNOWLEDGE_BASE_DIR))
+        
+        if st.session_state.rag_system.initialize_clients(silent=True):
+            st.session_state.system_initialized = True
     
     col_h, col_l = st.columns([6, 1])
         
@@ -975,101 +983,50 @@ def dashboard():
     main_tab1, main_tab2 = st.tabs(["AI Assistant", "Ticket Management"])
     
     with main_tab1:
-        # Render chat history in sidebar
         render_chat_history_sidebar(user['id'])
         
         with st.sidebar:
             st.markdown("---")
-            st.markdown("### System Control")
             
-            if not st.session_state.system_initialized:
-                if st.button("🚀 Initialize Knowledge Base", type="primary", use_container_width=True):
-                    
-                    steps = [
-                        ("Connecting to Milvus...", 0),
-                        ("Loading embeddings...", 25),
-                        ("Processing knowledge base...", 50),
-                        ("Building vector index...", 75),
-                        ("Finalizing system...", 90),
-                    ]
-                    
-                    spinner_placeholder = st.empty()
-                    progress_placeholder = st.empty()
-                    
-                    success = True
-                    
-                    if not hasattr(st.session_state, 'rag_system') or st.session_state.rag_system is None:
-                        st.session_state.rag_system = FacilitiesRAGSystem(knowledge_base_dir=str(Config.KNOWLEDGE_BASE_DIR))
-                    
-                    rag_system = st.session_state.rag_system
-                    
-                    with spinner_placeholder:
-                        with st.spinner(f"🔄 {steps[0][0]}"):
-                            progress_placeholder.progress(steps[0][1])
-                            if not rag_system.initialize_clients():
-                                success = False
-                                spinner_placeholder.empty()
-                                st.error("❌ Failed to initialize system")
-                    
-                    if success:
-                        with spinner_placeholder:
-                            with st.spinner(f"🔄 {steps[1][0]}"):
-                                progress_placeholder.progress(steps[1][1])
-                                time.sleep(0.5)
-                        
-                        with spinner_placeholder:
-                            with st.spinner(f"🔄 {steps[2][0]}"):
-                                progress_placeholder.progress(steps[2][1])
-                                time.sleep(0.5)
-                        
-                        with spinner_placeholder:
-                            with st.spinner(f"🔄 {steps[3][0]}"):
-                                progress_placeholder.progress(steps[3][1])
-                                if not rag_system.rebuild_knowledge_base_from_directory():
-                                    success = False
-                                    spinner_placeholder.empty()
-                                    st.error("❌ Failed to load knowledge base")
-                        
-                        if success:
-                            with spinner_placeholder:
-                                with st.spinner(f"🔄 {steps[4][0]}"):
-                                    progress_placeholder.progress(steps[4][1])
-                                    time.sleep(0.5)
-                            
-                            spinner_placeholder.empty()
-                            progress_placeholder.progress(100)
-                            st.success("✅ System ready!")
-                            
-                            st.session_state.rag_system = rag_system
-                            st.session_state.system_initialized = True
-                            time.sleep(1.5)
-                            st.rerun()
-                    
-                    if not success:
-                        progress_placeholder.empty()
-            else:
-                st.markdown("""
-                    <div style="background: linear-gradient(135deg, #d4edda, #c3e6cb); 
-                                padding: 1rem; border-radius: 12px; text-align: center;
-                                border: 2px solid #28a745; margin-bottom: 1rem;">
-                        <div style="font-size: 2rem; margin-bottom: 0.5rem;">✅</div>
-                        <div style="color: #155724; font-weight: 700; font-size: 1.1rem;">
-                            System Ready
+            if st.session_state.system_initialized:
+                if st.session_state.rag_system and st.session_state.rag_system.vectorstore:
+                    st.markdown("""
+                        <div style="background: linear-gradient(135deg, #d4edda, #c3e6cb); 
+                                    padding: 1rem; border-radius: 12px; text-align: center;
+                                    border: 2px solid #28a745; margin-bottom: 1rem;">
+                            <div style="font-size: 2rem; margin-bottom: 0.5rem;">✅</div>
+                            <div style="color: #155724; font-weight: 700; font-size: 1.1rem;">
+                                System Ready
+                            </div>
+                            <div style="color: #155724; font-size: 0.85rem; margin-top: 0.3rem;">
+                                AI-powered responses active
+                            </div>
                         </div>
-                        <div style="color: #155724; font-size: 0.85rem; margin-top: 0.3rem;">
-                            AI-powered responses active
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown("""
+                        <div style="background: linear-gradient(135deg, #fff3cd, #ffeaa7); 
+                                    padding: 1rem; border-radius: 12px; text-align: center;
+                                    border: 2px solid #ffc107; margin-bottom: 1rem;">
+                            <div style="font-size: 2rem; margin-bottom: 0.5rem;">⚠️</div>
+                            <div style="color: #856404; font-weight: 700; font-size: 1.1rem;">
+                                No Knowledge Base
+                            </div>
+                            <div style="color: #856404; font-size: 0.85rem; margin-top: 0.3rem;">
+                                Admin: Please upload documents below
+                            </div>
                         </div>
-                    </div>
-                """, unsafe_allow_html=True)
+                    """, unsafe_allow_html=True)
             
             st.markdown("---")
             
-            if st.session_state.system_initialized:
-                st.markdown("### 📤 Upload Documents")
+            # ADMIN-ONLY FILE UPLOAD
+            if user.get('role') in ['admin', 'manager']:
+                st.markdown("### 📤 Upload Documents (Admin)")
                 uploaded_file = st.file_uploader(
                     "Upload Documents",
                     type=["pdf", "csv", "xlsx", "xls", "txt"],
-                    help="Upload documents in PDF, CSV, Excel, or TXT format"
+                    help="Admin-only: Upload documents to knowledge base"
                 )
                
                 if uploaded_file:
@@ -1085,6 +1042,7 @@ def dashboard():
                 
                 st.markdown("---")
             
+            # CHAT MANAGEMENT (ALL USERS)
             if st.session_state.system_initialized:
                 if st.button("🗑️ Clear Current Chat", use_container_width=True):
                     # Save before clearing if there are messages
@@ -1178,26 +1136,17 @@ def dashboard():
         
         st.markdown('</div>', unsafe_allow_html=True)
         
-        # Chat input
-        if st.session_state.system_initialized:
-            prompt = st.chat_input(
-                "💬 Type your message here...", 
-                key="chat_input"
-            )
-            
-            if prompt:
-                process_message(prompt, user['id'])
-                st.rerun()
-        else:
-            st.chat_input(
-                "💬 Initialize system to start chatting...", 
-                key="chat_input_disabled", 
-                disabled=True
-            )
+        prompt = st.chat_input(
+            "💬 Type your message here...", 
+            key="chat_input"
+        )
+        
+        if prompt:
+            process_message(prompt, user['id'])
+            st.rerun()
     
     with main_tab2:
         ticket_dashboard_tab()
-
 
 # ====================== TICKET MANAGEMENT STYLES ======================
 
@@ -1943,7 +1892,6 @@ def render_chat_history_sidebar(user_id):
             is_active = st.session_state.current_conversation_id == conv_id
             col1, col2 = st.sidebar.columns([0.8, 0.2])
             with col1:
-                # Use a fallback title if the one from DB is empty for any reason
                 title_to_display = chat.get('title') or "New Chat"
                 if st.button(title_to_display, key=f"hist_{conv_id}", use_container_width=True, type="primary" if is_active else "secondary"):
                     st.session_state.messages = load_conversation(conv_id)

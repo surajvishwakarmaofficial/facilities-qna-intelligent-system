@@ -1,26 +1,24 @@
 import os
 from typing import List, Dict
 import streamlit as st
-from pymilvus import connections, utility
+from pymilvus import connections, utility, Collection
 from langchain_community.vectorstores import Milvus
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
-from langchain_community.document_loaders import PyPDFLoader, CSVLoader, TextLoader
+from langchain_community.document_loaders import PyPDFLoader
 import pathlib
 import pandas as pd
+import time
 
 from src.llm.clients import setup_llm_clients
 import dotenv
 from config.constant_config import Config
-
-
 
 dotenv.load_dotenv()
 
 PROJECT_ROOT = pathlib.Path(__file__).parent.parent.parent
 candidate_path = PROJECT_ROOT / "generative_ai_projects" / "data" / "knowledge_base.pdf"
 
-dotenv.load_dotenv()
 
 class FacilitiesRAGSystem:
     """RAG System for Facilities Management"""
@@ -38,36 +36,81 @@ class FacilitiesRAGSystem:
             'xlsx': self._process_excel_file,
             'xls': self._process_excel_file,
             'txt': self._process_text_file,
-
         }
 
-    def initialize_clients(self):
+    def initialize_clients(self, silent=False):
         """Initializes LLM/Embedding clients and Milvus connection."""
-        if self.llm and self.embedding_function and self.vectorstore:
+        if self.llm and self.embedding_function:
+            if utility.has_collection(self.collection_name):
+                self.vectorstore = Milvus(
+                    embedding_function=self.embedding_function,
+                    collection_name=self.collection_name,
+                    connection_args={"uri": Config.MILVUS_URI, "token": Config.MILVUS_TOKEN},
+                    auto_id=True
+                )
             return True
 
         self.embedding_function, self.llm = setup_llm_clients()
         if not self.embedding_function or not self.llm:
-            st.error("❌ Failed to initialize LLM or embedding function.")
+            if not silent:
+                st.error("Failed to initialize LLM or embedding function.")
             return False
 
         try:
             connections.connect(alias="default", uri=Config.MILVUS_URI, token=Config.MILVUS_TOKEN)
-            st.success("✅ Connected to Milvus")
-            self.vectorstore = Milvus(
-                embedding_function=self.embedding_function,
-                collection_name=self.collection_name,
-                connection_args={"uri": Config.MILVUS_URI, "token": Config.MILVUS_TOKEN},
-                auto_id=True
-            )
-            return True
+            if not silent:
+                st.success("Connected to Milvus")
+            
+            if utility.has_collection(self.collection_name):
+                if not silent:
+                    st.info(f"Loading existing collection: {self.collection_name}")
+                
+                self.vectorstore = Milvus(
+                    embedding_function=self.embedding_function,
+                    collection_name=self.collection_name,
+                    connection_args={"uri": Config.MILVUS_URI, "token": Config.MILVUS_TOKEN},
+                    auto_id=True
+                )
+                
+                try:
+                    collection = Collection(self.collection_name)
+                    collection.load()
+                    num_entities = collection.num_entities
+                    
+                    if not silent:
+                        st.success(f"Loaded existing knowledge base with {num_entities} documents")
+                    
+                    return True
+                except Exception as load_error:
+                    if not silent:
+                        st.warning(f"Collection exists but load had an issue: {load_error}")
+                    return False
+            else:
+                self.vectorstore = None
+                if not silent:
+                    st.warning("No existing knowledge base found.")
+                return True
+            
         except Exception as e:
-            st.error(f"Error connecting to Milvus: {str(e)}")
+            if not silent:
+                st.error(f"Error connecting to Milvus: {str(e)}")
             return False
 
     def rebuild_knowledge_base_from_directory(self):
-        st.info(f"📁 Starting knowledge base rebuild from directory: {self.knowledge_base_dir}")
-        if not self.initialize_clients(): return False
+        """Admin function: Rebuild entire knowledge base from scratch"""
+        st.info(f"Starting knowledge base rebuild from directory: {self.knowledge_base_dir}")
+        
+        if not self.embedding_function or not self.llm:
+            self.embedding_function, self.llm = setup_llm_clients()
+            if not self.embedding_function or not self.llm:
+                st.error("Failed to initialize LLM or embedding function.")
+                return False
+        
+        try:
+            connections.connect(alias="default", uri=Config.MILVUS_URI, token=Config.MILVUS_TOKEN)
+        except Exception as e:
+            st.error(f"Error connecting to Milvus: {str(e)}")
+            return False
         
         if utility.has_collection(self.collection_name):
             utility.drop_collection(self.collection_name)
@@ -89,7 +132,7 @@ class FacilitiesRAGSystem:
                         all_documents.extend(processed_docs)
         
         if not all_documents:
-            st.error("❌ No documents were processed from the directory.")
+            st.error("No documents were processed from the directory.")
             return False
 
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
@@ -101,28 +144,77 @@ class FacilitiesRAGSystem:
             collection_name=self.collection_name,
             connection_args={"uri": Config.MILVUS_URI, "token": Config.MILVUS_TOKEN},
         )
-        st.success(f"✅ Successfully rebuilt knowledge base with {len(splits)} chunks.")
+        
+        try:
+            collection = Collection(self.collection_name)
+            collection.load()
+            num_entities = collection.num_entities
+            st.success(f"Successfully rebuilt knowledge base with {num_entities} chunks from {len(splits)} processed chunks.")
+        except Exception as e:
+            st.warning(f"Collection created but verification failed: {str(e)}")
+        
         return True
             
     def _get_file_extension(self, filename: str) -> str:
         return filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
     
     def _process_pdf_file(self, temp_file_path: str, filename: str) -> List[Document]:
-        loader = PyPDFLoader(temp_file_path)
-        documents = loader.load()
-        processed_documents = []
-        for doc in documents:
-            new_metadata = {
-                "title": filename, 
-                "source": f"{filename} (Page {doc.metadata.get('page', 0) + 1})", 
-                "file_type": "pdf",
-                "row_number": 0,
-                "sheet_name": "",
-                "section_number": 0
-            }
-            processed_doc = Document(page_content=doc.page_content, metadata=new_metadata)
-            processed_documents.append(processed_doc)
-        return processed_documents
+        """Process PDF with image detection"""
+        try:
+            loader = PyPDFLoader(temp_file_path)
+            documents = loader.load()
+            
+            if not documents:
+                st.error(f"PDF contains no pages: {filename}")
+                return []
+            
+            # Image detection
+            total_text_length = sum(len(doc.page_content.strip()) for doc in documents)
+            avg_text_per_page = total_text_length / len(documents) if documents else 0
+            
+            if avg_text_per_page < 50:
+                st.error("Image-Based PDF Detected")
+                st.markdown("""
+                    <div style="background: #fff3cd; padding: 1rem; border-radius: 8px; border-left: 4px solid #ffc107;">
+                        <h4 style="color: #856404; margin-top: 0;">This PDF contains images instead of text</h4>
+                        <p style="color: #856404;"><strong>Solution:</strong> Convert to text-based PDF using OCR tools (Adobe Acrobat, Google Drive)</p>
+                        <p style="color: #856404;"><strong>Test:</strong> Open PDF and try to select text with your cursor</p>
+                        <p style="color: #856404;"><strong>Alternative:</strong> Upload as TXT, CSV, or Excel file</p>
+                    </div>
+                """, unsafe_allow_html=True)
+                return []
+            
+            # Process text-based PDF
+            processed_documents = []
+            
+            for idx, doc in enumerate(documents):
+                content = doc.page_content.strip()
+                
+                if len(content) < 10:
+                    continue
+                
+                new_metadata = {
+                    "title": filename, 
+                    "source": f"{filename} (Page {doc.metadata.get('page', idx) + 1})", 
+                    "file_type": "pdf",
+                    "row_number": 0,
+                    "sheet_name": "",
+                    "section_number": idx + 1,
+                    "page_number": doc.metadata.get('page', idx) + 1
+                }
+                
+                processed_doc = Document(page_content=content, metadata=new_metadata)
+                processed_documents.append(processed_doc)
+            
+            if not processed_documents:
+                st.error(f"No readable text found in {filename}")
+                return []
+            
+            return processed_documents
+            
+        except Exception as e:
+            st.error(f"Error processing PDF: {str(e)}")
+            return []
 
     def _process_csv_file(self, temp_file_path: str, filename: str) -> List[Document]:
         try:
@@ -131,7 +223,6 @@ class FacilitiesRAGSystem:
             for idx, row in df.iterrows():
                 content_parts = [f"{col}: {value}" for col, value in row.items() if pd.notna(value)]
                 content = "\n".join(content_parts)
-                # FIX: Added default values for all possible metadata fields for consistency
                 new_metadata = {
                     "title": filename, 
                     "source": f"{filename} (Row {idx + 1})", 
@@ -176,12 +267,10 @@ class FacilitiesRAGSystem:
         try:
             with open(temp_file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-
         except UnicodeDecodeError:
             try:
                 with open(temp_file_path, 'r', encoding='latin-1') as f:
                     content = f.read()
-
             except Exception as e:
                 st.error(f"Error processing text file: {str(e)}")
                 return []
@@ -190,7 +279,6 @@ class FacilitiesRAGSystem:
         processed_documents = []
         for idx, paragraph in enumerate(paragraphs):
             if paragraph.strip():
-                
                 new_metadata = {
                     "title": filename, 
                     "source": f"{filename} (Section {idx + 1})", 
@@ -204,10 +292,7 @@ class FacilitiesRAGSystem:
         return processed_documents
     
     def generate_response_stream(self, query: str):
-        """
-        Generate a streaming response using RAG, yielding tokens as they arrive.
-        Also returns the source documents used for the response.
-        """
+        """Generate a streaming response using RAG"""
         try:
             if not self.vectorstore or not utility.has_collection(self.collection_name):
                 def error_stream():
@@ -236,7 +321,18 @@ class FacilitiesRAGSystem:
                 for msg in self.chat_history[-4:]:
                     history_context += f"{msg['role']}: {msg['content']}\n"
             
-            prompt = f"""You are a professional and specialized Facilities Management Assistant... (your full prompt here)"""
+            prompt = f"""You are a professional and specialized Facilities Management Assistant. Your ONLY function is to answer questions related to the building's facilities, amenities, policies, and procedures, based STRICTLY on the context provided.
+
+            If the user's question is NOT related to facilities management, you MUST politely refuse to answer.
+
+            {history_context}
+
+            Context from facilities documents:
+            {context}
+
+            Current Question: {query}
+
+            Based on these strict instructions, please provide your response."""
             
             def stream_generator():
                 stream = self.llm.stream(prompt)
@@ -260,48 +356,137 @@ class FacilitiesRAGSystem:
             }
 
     def process_file(self, uploaded_file):
-        """
-        USER ACTION: Processes a single uploaded file and ADDS it to the existing collection.
-        """
+        """ADMIN ACTION: Add new document to existing knowledge base"""
         temp_file_path = os.path.join(".", uploaded_file.name)
+        
         try:
-            if not self.vectorstore:
-                st.error("Knowledge base is not initialized. Please ask an admin to initialize it first.")
+            if not self.embedding_function or not self.llm:
+                st.error("System not initialized")
                 return False
+            
+            if utility.has_collection(self.collection_name):
+                st.info("Connecting to collection...")
+                self.vectorstore = Milvus(
+                    embedding_function=self.embedding_function,
+                    collection_name=self.collection_name,
+                    connection_args={"uri": Config.MILVUS_URI, "token": Config.MILVUS_TOKEN},
+                    auto_id=True
+                )
             
             file_ext = self._get_file_extension(uploaded_file.name)
             if file_ext not in self.supported_formats:
                 st.error(f"Unsupported file format: .{file_ext}")
+                st.info("Supported formats: PDF, CSV, Excel, TXT")
                 return False
 
             with open(temp_file_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
             
-            st.info(f"📄 Processing {file_ext.upper()} file: {uploaded_file.name}")
-            processor = self.supported_formats[file_ext]
-            processed_documents = processor(temp_file_path, uploaded_file.name)
+            with st.spinner(f"Processing {uploaded_file.name}..."):
+                processor = self.supported_formats[file_ext]
+                processed_documents = processor(temp_file_path, uploaded_file.name)
             
             if not processed_documents:
-                st.error("❌ No content extracted from file")
+                st.error("No content extracted from file")
                 return False
             
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-            splits = text_splitter.split_documents(processed_documents)
+            st.success(f"Extracted {len(processed_documents)} pages/sections")
             
-            self.vectorstore.add_documents(splits)
-            st.success(f"Successfully added {len(splits)} chunks from {uploaded_file.name} to the knowledge base.")
-            return True
+            with st.spinner("Creating document chunks..."):
+                text_splitter = RecursiveCharacterTextSplitter(
+                    chunk_size=500, 
+                    chunk_overlap=50,
+                    length_function=len,
+                    separators=["\n\n", "\n", " ", ""]
+                )
+                splits = text_splitter.split_documents(processed_documents)
+            
+            if not splits:
+                st.error("Failed to create document chunks")
+                return False
+            
+            st.info(f"Generated {len(splits)} chunks")
+            
+            if self.vectorstore is None:
+                with st.spinner("Creating new collection..."):
+                    self.vectorstore = Milvus.from_documents(
+                        documents=splits,
+                        embedding=self.embedding_function,
+                        collection_name=self.collection_name,
+                        connection_args={"uri": Config.MILVUS_URI, "token": Config.MILVUS_TOKEN},
+                    )
+                    
+                    collection = Collection(self.collection_name)
+                    collection.load()
+                    num_entities = collection.num_entities
+                
+                st.success(f"Created collection with {num_entities} chunks")
+                return True
+            
+            with st.spinner(f"Uploading {len(splits)} chunks to database..."):
+                collection = Collection(self.collection_name)
+                collection.load()
+                count_before = collection.num_entities
+                
+                st.info(f"Current document count: {count_before}")
+                
+                added_ids = self.vectorstore.add_documents(documents=splits)
+                
+                if not added_ids:
+                    st.error("Upload failed: No IDs returned")
+                    return False
+                
+                st.info(f"Received {len(added_ids)} IDs from upload")
+                
+                try:
+                    collection.flush()
+                    st.info("Data persisted to database")
+                except Exception as flush_error:
+                    st.warning(f"Flush warning: {flush_error}")
+                
+                time.sleep(2)
+                
+                collection.load()
+                count_after = collection.num_entities
+                
+                st.info(f"Updated document count: {count_after}")
+                
+                actual_added = count_after - count_before
+                
+                if actual_added > 0:
+                    st.success(f"Successfully added {actual_added} new chunks")
+                    st.success(f"Total documents: {count_before} to {count_after}")
+                    
+                    test_query = splits[0].page_content[:50]
+                    retriever = self.vectorstore.as_retriever(search_kwargs={"k": 1})
+                    test_results = retriever.invoke(test_query)
+                    
+                    if test_results:
+                        st.success("New documents are searchable")
+                    
+                    return True
+                else:
+                    st.error(f"Upload verification failed: Document count unchanged ({count_before})")
+                    st.error(f"IDs returned: {len(added_ids)}, Expected: {len(splits)}, Actual: {actual_added}")
+                    return False
             
         except Exception as e:
-            st.error(f"Error processing file: {str(e)}")
+            st.error(f"Error: {str(e)}")
+            import traceback
+            with st.expander("Debug Information"):
+                st.code(traceback.format_exc())
             return False
         finally:
             if os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
     
     def retrieve_relevant_info(self, query: str, k: int = 3):
-        """Retrieve relevant facilities information from vector database."""
+        """Retrieve relevant information from all documents"""
         try:
+            if self.vectorstore and utility.has_collection(self.collection_name):
+                collection = Collection(self.collection_name)
+                collection.load()
+            
             retriever = self.vectorstore.as_retriever(search_kwargs={"k": k})
             relevant_docs = retriever.invoke(query)
             return relevant_docs
@@ -310,7 +495,7 @@ class FacilitiesRAGSystem:
             return []
 
     def generate_response(self, query: str):
-        """Generate response using PURE RAG approach with chat history."""
+        """Generate response using RAG"""
         try:
             if not self.vectorstore or not utility.has_collection(self.collection_name):
                 return {"answer": "The knowledge base has not been initialized. Please contact an administrator.", "sources": [], "error": True}
@@ -319,7 +504,7 @@ class FacilitiesRAGSystem:
 
             if not relevant_docs:
                 return {
-                    "answer": "I could not find relevant information in the facilities knowledge base to answer your question. Please try rephrasing or ask a different facilities-related question.",
+                    "answer": "I could not find relevant information in the facilities knowledge base to answer your question.",
                     "sources": [],
                     "error": True
                 }
@@ -334,7 +519,7 @@ class FacilitiesRAGSystem:
 
             prompt = f"""You are a professional and specialized Facilities Management Assistant. Your ONLY function is to answer questions related to the building's facilities, amenities, policies, and procedures, based STRICTLY on the context provided.
 
-            If the user's question is NOT related to facilities management, you MUST politely refuse to answer. State that you can only assist with facilities-related inquiries. Do NOT answer the question, even if you know the answer from your general knowledge.
+            If the user's question is NOT related to facilities management, you MUST politely refuse to answer.
 
             {history_context}
 
@@ -343,7 +528,7 @@ class FacilitiesRAGSystem:
 
             Current Question: {query}
 
-            Based on these strict instructions, please provide your response. If the context does not contain the answer, but the question is about facilities, state that you do not have that specific information and can escalate the query to the facilities department."""
+            Based on these strict instructions, please provide your response."""
 
             response = self.llm.invoke(prompt)
             answer = response.content
@@ -363,4 +548,3 @@ class FacilitiesRAGSystem:
                 "sources": [],
                 "error": True
             }
-        
