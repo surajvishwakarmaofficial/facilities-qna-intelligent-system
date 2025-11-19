@@ -10,14 +10,9 @@ from datetime import datetime, timedelta
 from jose import jwt
 
 from src.llm.litellm_client import LiteLLMClient
-from src.rag.vector_store import MilvusStore
-from src.rag.retriever import KnowledgeRetriever
-from src.agents.facilities_agent import FacilitiesAgent
 from src.database.session import DatabaseManager
 from sqlalchemy.orm import Session
 from src.database.models import Ticket, TicketHistory, ChatHistory
-from src.utils.rate_limiter import RateLimiter
-from src.utils.cache import ResponseCache
 import dotenv
 from passlib.context import CryptContext
 
@@ -33,6 +28,17 @@ from src.utils.constants import (
 from typing import Optional, List
 from src.agents.create_user_agent import UserRegistrationAgent
 
+# Database imports - CLEAN
+from src.database import (
+    db_connection,
+    get_db,
+    User,
+    Ticket,
+    TicketHistory,
+    ChatHistory,
+
+)
+
 
 litellm.set_verbose = True
 
@@ -47,20 +53,14 @@ security = HTTPBasic()
 
 llm_client = LiteLLMClient()
 
-vector_store = MilvusStore(
-    uri=os.environ.get("MILVUS_URI"),
-    token=os.environ.get("MILVUS_TOKEN")
-)
 
-retriever = KnowledgeRetriever(vector_store, llm_client)
-agent = FacilitiesAgent(llm_client, retriever)
 db_manager = DatabaseManager(Config.SQLITE_DB_URL)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-# Create tables
-Base.metadata.create_all(bind=db_manager.engine)
+db_connection.create_tables()
+
 
 # === AUTH DEPENDENCY ===
 def get_db() -> Session:
@@ -782,11 +782,7 @@ async def get_user_chat_histories(user_id: str, db: Session = Depends(get_db)):
         all_chats = db.query(ChatHistory).filter(
             ChatHistory.user_id == user_id
         ).all()
-        
-        print(f"\n=== DEBUG: Total chats for user {user_id}: {len(all_chats)} ===")
-        for chat in all_chats:
-            print(f"ID: {chat.conversation_id}, Title: {chat.title}, Archived: {chat.is_archived}, Updated: {chat.updated_at}")
-        
+
         # Now get only non-archived
         histories = db.query(ChatHistory).filter(
             ChatHistory.user_id == user_id,
@@ -820,7 +816,8 @@ async def get_conversation_details(conversation_id: str, db: Session = Depends(g
         return {
             "success": True,
             "messages": json.loads(chat.messages or '[]'),
-            "title": chat.title
+            "title": chat.title,
+
         }
     except Exception as e:
         print(f"Error fetching conversation: {str(e)}")
