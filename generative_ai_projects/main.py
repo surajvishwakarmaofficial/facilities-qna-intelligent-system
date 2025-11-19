@@ -1,3 +1,4 @@
+import asyncio
 import os
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,6 +31,8 @@ from src.utils.constants import (
     
 )
 from typing import Optional, List
+from src.agents.create_user_agent import UserRegistrationAgent
+
 
 litellm.set_verbose = True
 
@@ -87,6 +90,9 @@ class RegisterRequest(BaseModel):
     full_name: str
     password: str
 
+
+import re
+
 @app.post("/api/register")
 async def register(request: RegisterRequest, db: Session = Depends(get_db)):
     password = request.password.strip()
@@ -94,15 +100,33 @@ async def register(request: RegisterRequest, db: Session = Depends(get_db)):
     if len(password) < 8:
         raise HTTPException(
             status_code=400,
-            detail="Password must be min 8 characters"
+            detail="Password must be at least 8 characters"
+        )
+    
+    if len(password) > 72:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be 72 characters or less (bcrypt limit)"
+        )
+    
+    password_bytes = password.encode('utf-8')
+    if len(password_bytes) > 72:
+        password = password_bytes[:72].decode('utf-8', errors='ignore')
+    
+    if not re.search(r'[A-Za-z]', password) or not re.search(r'[0-9]', password):
+        raise HTTPException(
+            status_code=400,
+            detail="Password must contain both letters and numbers"
         )
     
     if db.query(User).filter(User.username == request.username).first():
         raise HTTPException(400, "Username already exists")
+    
     if db.query(User).filter(User.email == request.email).first():
         raise HTTPException(400, "Email already registered")
     
     hashed = get_password_hash(password)
+    
     new_user = User(
         username=request.username,
         email=request.email,
@@ -111,8 +135,7 @@ async def register(request: RegisterRequest, db: Session = Depends(get_db)):
     )
     db.add(new_user)
     db.commit()
-    return {"message": "Account created! Login with your 8-char password."}
-
+    return {"message": "Account created successfully! Please login."}
 
 class LoginRequest(BaseModel):
     username: str
@@ -859,4 +882,107 @@ async def debug_chat_histories(user_id: str, db: Session = Depends(get_db)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch debug info: {str(e)}")
+
+
+# Initialize ticket agent
+from fastapi import Depends, HTTPException
+from sqlalchemy.orm import Session
+import asyncio
+import logging
+from src.agents.ticket_agent import TicketManagementAgent
+
+
+logger = logging.getLogger(__name__)
+
+class ChatRequest(BaseModel):
+    user_id: str
+    user_role: str
+    message: str
+
+@app.post("/api/chat/ticket-agent")
+async def chat_with_ticket_agent(
+    request: ChatRequest,
+    db: Session = Depends(get_db)
+):
+    """Chat with ticket management agent with proper error handling"""
+    try:
+        logger.info(f"Ticket agent request from user: {request.user_id}")
+        
+        from src.agents.ticket_agent import TicketManagementAgent
+        
+        ticket_agent = TicketManagementAgent(db_session=db)
+        
+        # Run with timeout protection
+        loop = asyncio.get_event_loop()
+        response = await asyncio.wait_for(
+            loop.run_in_executor(
+                None,
+                ticket_agent.process_message,
+                request.message,
+                request.user_id,
+                request.user_role
+            ),
+            timeout=90
+        )
+        
+        return {
+            "success": True,
+            "response": response
+        }
+        
+    except asyncio.TimeoutError:
+        logger.error("Request timeout")
+        raise HTTPException(
+            status_code=504,
+            detail="Request processing timed out"
+        )
+    except Exception as e:
+        logger.error(f"Error in ticket agent endpoint: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+@app.post("/api/admin/user-management")
+async def admin_user_management(
+    request: ChatRequest,
+    db: Session = Depends(get_db)
+):
+    """Admin-only user management agent"""
+    try:
+        logger.info(f"User management request from: {request.user_id}")
+    
+        if request.user_role != "admin":
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied. Admin privileges required."
+            )
+        
+        user_agent = UserRegistrationAgent(db_session=db)
+        
+        loop = asyncio.get_event_loop()
+        response = await asyncio.wait_for(
+            loop.run_in_executor(
+                None,
+                user_agent.process_message,
+                request.message,
+                request.user_id,
+                request.user_role
+            ),
+            timeout=30
+        )
+        
+        return {
+            "success": True,
+            "response": response
+        }
+        
+    except HTTPException:
+        raise
+    except asyncio.TimeoutError:
+        logger.error("Request timeout")
+        raise HTTPException(status_code=504, detail="Request processing timed out")
+    except Exception as e:
+        logger.error(f"Error in user management endpoint: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
     

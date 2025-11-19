@@ -7,7 +7,6 @@ import dotenv
 from datetime import datetime
 import json
 
-# Import refactored logic
 from src.utils.state_utils import initialize_session_state
 from src.rag_core import FacilitiesRAGSystem
 from src.llm.clients import get_llm_greeting_response
@@ -766,7 +765,7 @@ def login_page():
                                 response = requests.post(
                                     f"{Config.API_URL}/api/login",
                                     json={"username": username, "password": password},
-                                    timeout=10
+
                                 )
                                 
                                 if response.status_code == 200:
@@ -1102,8 +1101,10 @@ def dashboard():
             else:
                 for idx, message in enumerate(st.session_state.messages):
                     with st.chat_message(message["role"]):
+                        # ✅ Simple markdown display - NO unsafe_allow_html
                         st.markdown(message["content"])
                         
+                        # Show sources for RAG responses
                         if "sources" in message and message["sources"]:
                             with st.expander("📚 View Sources", expanded=False):
                                 sources_by_doc = {}
@@ -1142,7 +1143,7 @@ def dashboard():
         )
         
         if prompt:
-            process_message(prompt, user['id'])
+            process_message(prompt, user['id'], user.get('role', 'user'))
             st.rerun()
     
     with main_tab2:
@@ -1904,44 +1905,198 @@ def render_chat_history_sidebar(user_id):
                             st.session_state.messages, st.session_state.current_conversation_id = [], None
                         st.toast("Chat deleted!", icon="🗑️"); time.sleep(1); st.rerun()
 
-def process_message(prompt, user_id):
-    """Process and respond to user message"""
+def process_message(prompt, user_id, user_role="user"):
+    """Process user message with intelligent agent routing"""
+    if not st.session_state.get('rag_system'):
+        st.error("System not initialized")
+        return
+    
     st.session_state.messages.append({"role": "user", "content": prompt})
+        
+    # User Management keywords (Admin only)
+    user_mgmt_keywords = [
+        "register user", "create user", "add user", "new user",
+        "list users", "show users", "all users", "user stats",
+        "user statistics", "how many users"
+    ]
+    is_user_mgmt = any(keyword in prompt.lower() for keyword in user_mgmt_keywords)
     
-    answer = ""
-    source_docs = []
-
-    with st.spinner("🧠 Thinking..."):
-        if not st.session_state.system_initialized:
-            answer = get_llm_greeting_response(st.session_state.messages, prompt)
-        else:
-            result = st.session_state.rag_system.generate_response(prompt)
-            answer = result["answer"]
-            source_docs = result.get("sources", [])
+    # Ticket keywords
+    ticket_keywords = [
+        "ticket", "create ticket", "my tickets", "show tickets",
+        "display tickets", "all tickets", "open tickets", "ticket stats",
+        "ticket statistics", "escalated tickets", "resolved tickets"
+    ]
+    is_ticket_query = any(keyword in prompt.lower() for keyword in ticket_keywords)
+        
+    # 1. USER MANAGEMENT AGENT (Admin only)
+    if is_user_mgmt and user_role == "admin":
+        with st.spinner("Processing user management request..."):
+            try:
+                response = requests.post(
+                    f"{Config.API_URL}/api/admin/user-management",
+                    json={
+                        "user_id": user_id,
+                        "user_role": user_role,
+                        "message": prompt
+                    },
+                    timeout=60
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    answer = data.get("response", "No response received")
+                    
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": answer
+                    })
+                elif response.status_code == 403:
+                    error_msg = "❌ Access denied. Admin privileges required."
+                    st.error(error_msg)
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": error_msg
+                    })
+                elif response.status_code == 500:
+                    error_msg = "❌ Server error occurred while processing user management request."
+                    st.error(error_msg)
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": error_msg
+                    })
+                else:
+                    error_msg = f"❌ Failed to process request: HTTP {response.status_code}"
+                    st.error(error_msg)
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": error_msg
+                    })
+                    
+            except requests.exceptions.Timeout:
+                error_msg = "⏱️ Request timed out. Please try again."
+                st.warning(error_msg)
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": error_msg
+                })
+                
+            except requests.exceptions.ConnectionError:
+                error_msg = "🔌 Cannot connect to user management service."
+                st.error(error_msg)
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": error_msg
+                })
+                
+            except Exception as e:
+                error_msg = f"❌ Unexpected error: {str(e)}"
+                st.error(error_msg)
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": error_msg
+                })
     
-    sources = []
-    if source_docs and st.session_state.system_initialized:
-        for doc in source_docs:
-            title = doc.metadata.get("title", "Unknown")
-            content = doc.page_content
-            sources.append({"title": title, "content": content})
+    # Check if non-admin tries user management
+    elif is_user_mgmt and user_role != "admin":
+        error_msg = "🔒 Access denied. User management requires administrator privileges."
+        st.warning(error_msg)
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": error_msg
+        })
     
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": answer,
-        "sources": sources,
-        "timestamp": datetime.now().isoformat()
-    })
+    # 2. TICKET MANAGEMENT AGENT
+    elif is_ticket_query:
+        with st.spinner("Processing ticket request..."):
+            try:
+                response = requests.post(
+                    f"{Config.API_URL}/api/chat/ticket-agent",
+                    json={
+                        "user_id": user_id,
+                        "user_role": user_role,
+                        "message": prompt
+                    },
+                    timeout=120
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    answer = data.get("response", "No response received")
+                    
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": answer
+                    })
+                elif response.status_code == 500:
+                    error_msg = "❌ Server error occurred while processing ticket request."
+                    st.error(error_msg)
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": error_msg
+                    })
+                else:
+                    error_msg = f"❌ Failed to process ticket request: HTTP {response.status_code}"
+                    st.error(error_msg)
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": error_msg
+                    })
+                    
+            except requests.exceptions.Timeout:
+                error_msg = "⏱️ The server is taking too long to respond."
+                st.warning(error_msg)
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": error_msg
+                })
+                
+            except requests.exceptions.ConnectionError:
+                error_msg = "🔌 Cannot connect to ticket service."
+                st.error(error_msg)
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": error_msg
+                })
+                
+            except Exception as e:
+                error_msg = f"❌ Unexpected error: {str(e)}"
+                st.error(error_msg)
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": error_msg
+                })
     
-    # Auto-save chat after each exchange
-    if len(st.session_state.messages) >= 2:  # At least one user and one assistant message
-        conversation_id = save_chat_history(
-            user_id,
-            st.session_state.current_conversation_id,
-            st.session_state.messages
-        )
-        if conversation_id and not st.session_state.current_conversation_id:
-            st.session_state.current_conversation_id = conversation_id
+    # 3. RAG SYSTEM (General queries)
+    else:
+        with st.spinner("Thinking..."):
+            try:
+                response = st.session_state.rag_system.generate_response(prompt)
+                
+                if not response.get('error', False):
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": response['answer'],
+                        "sources": [
+                            {
+                                'title': doc.metadata.get('title', 'Unknown'),
+                                'content': doc.page_content
+                            }
+                            for doc in response.get('sources', [])
+                        ]
+                    })
+                else:
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": response['answer']
+                    })
+            except Exception as e:
+                error_msg = f"❌ Error: {str(e)}"
+                st.error(error_msg)
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": error_msg
+                })
 
 
 def main():
