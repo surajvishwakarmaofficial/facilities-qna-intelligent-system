@@ -1,38 +1,37 @@
-from typing import List, Dict
-from .vector_store import MilvusStore
-from ..llm.litellm_client import LiteLLMClient
+"""
+Retriever Module - Document Retrieval
+"""
+
+from typing import List
+from langchain_core.documents import Document
+import streamlit as st
+
 
 class KnowledgeRetriever:
-    def __init__(self, vector_store: MilvusStore, llm_client: LiteLLMClient):
+    """Handles document retrieval"""
+    
+    def __init__(self, vector_store, k: int = 3):
         self.vector_store = vector_store
-        self.llm_client = llm_client
+        self.k = k
     
-    async def retrieve(self, query: str, top_k: int = 3) -> List[str]:
-        # Generate query embedding
-        query_embedding = await self.llm_client.embed(query)
-        
-        # Search vector store
-        results = self.vector_store.search(query_embedding, top_k)
-        
-        # Extract texts
-        contexts = [text for text, _ in results]
-        return contexts
+    def retrieve(self, query: str, k: int = None) -> List[Document]:
+        """Retrieve relevant documents"""
+        try:
+            vectorstore = self.vector_store.get_vectorstore()
+            
+            if not vectorstore or not self.vector_store.has_collection():
+                return []
+            
+            num_docs = k if k is not None else self.k
+            
+            retriever = vectorstore.as_retriever(search_kwargs={"k": num_docs})
+            relevant_docs = retriever.invoke(query)
+            
+            return relevant_docs
+        except Exception as e:
+            st.error(f"Error retrieving documents: {str(e)}")
+            return []
     
-    async def retrieve_and_generate(self, query: str, context: List[str]) -> str:
-        context_text = "\n\n".join(context)
-        
-        prompt = f"""Context from knowledge base:
-{context_text}
-
-Question: {query}
-
-Answer based on the context provided. If the information is not in the context, say so clearly."""
-
-        messages = [
-            {"role": "system", "content": "You are a helpful facilities assistant."},
-            {"role": "user", "content": prompt}
-        ]
-        
-        response = await self.llm_client.generate(messages)
-        return response
-
+    def get_context_string(self, documents: List[Document]) -> str:
+        """Convert documents to context string"""
+        return "\n\n".join([doc.page_content for doc in documents])

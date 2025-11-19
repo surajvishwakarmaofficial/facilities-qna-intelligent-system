@@ -8,7 +8,7 @@ from datetime import datetime
 import json
 
 from src.utils.state_utils import initialize_session_state
-from src.rag_core import FacilitiesRAGSystem
+from src.rag.rag_core import FacilitiesRAGSystem 
 from src.llm.clients import get_llm_greeting_response
 from config.constant_config import Config
 
