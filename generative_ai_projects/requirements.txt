@@ -41,5 +41,7 @@ xlrd==2.0.2
 streamlit-cookies-manager<=0.2.0
 apscheduler>=3.11.1
 
+langgraph>=1.0.3
+
 
 
