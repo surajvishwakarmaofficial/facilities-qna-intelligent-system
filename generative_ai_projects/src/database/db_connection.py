@@ -2,7 +2,7 @@
 Database Connection Module
 Centralized database session management
 """
-
+from src.database.models import Base
 from sqlalchemy.orm import Session
 from src.database.session import DatabaseManager
 from config.constant_config import Config
@@ -19,6 +19,7 @@ class DatabaseConnection:
         if cls._instance is None:
             cls._instance = super(DatabaseConnection, cls).__new__(cls)
             cls._db_manager = DatabaseManager(Config.SQLITE_DB_URL)
+
         return cls._instance
     
     @property
@@ -37,8 +38,8 @@ class DatabaseConnection:
     
     def create_tables(self):
         """Create all database tables"""
-        from src.database.models import Base
         Base.metadata.create_all(bind=self.engine)
+        
         print("✓ Database tables created")
 
 
@@ -65,3 +66,5 @@ def get_db() -> Session:
 def get_db_manager() -> DatabaseManager:
     """Get the database manager instance"""
     return db_connection.manager
+
+
