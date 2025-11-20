@@ -2011,7 +2011,7 @@ def process_message(prompt, user_id, user_role="user"):
         with st.spinner("Processing ticket request..."):
             try:
                 response = requests.post(
-                    f"{Config.API_URL}/api/chat/ticket-agent",
+                    f"{Config.API_URL}/api/v1/ticket_agent",
                     json={
                         "user_id": user_id,
                         "user_role": user_role,

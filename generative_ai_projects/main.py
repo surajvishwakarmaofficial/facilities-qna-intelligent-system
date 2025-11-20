@@ -26,9 +26,19 @@ from src.utils.constants import (
     
 )
 from typing import Optional, List
-from src.agents.create_user_agent import UserRegistrationAgent
+from fastapi.responses import JSONResponse
 
-# Database imports - CLEAN
+import json
+from fastapi import Depends, HTTPException
+from sqlalchemy.orm import Session
+import asyncio
+import logging
+from pydantic import BaseModel
+from src.agents.ticket_agent import TicketManagementAgent
+
+logger = logging.getLogger(__name__)
+
+
 from src.database import (
     db_connection,
     get_db,
@@ -881,105 +891,69 @@ async def debug_chat_histories(user_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to fetch debug info: {str(e)}")
 
 
-# Initialize ticket agent
-from fastapi import Depends, HTTPException
-from sqlalchemy.orm import Session
-import asyncio
-import logging
-from src.agents.ticket_agent import TicketManagementAgent
-
-
-logger = logging.getLogger(__name__)
-
 class ChatRequest(BaseModel):
     user_id: str
-    user_role: str
     message: str
 
-@app.post("/api/chat/ticket-agent")
+class ChatResponse(BaseModel):
+    success: bool
+    response: str
+    token_usage: dict
+    cost_info: dict
+    
+
+@app.post("/api/v1/ticket_agent", response_model=ChatResponse)
 async def chat_with_ticket_agent(
     request: ChatRequest,
     db: Session = Depends(get_db)
 ):
-    """Chat with ticket management agent with proper error handling"""
+    """Chat with ticket management agent"""
     try:
-        logger.info(f"Ticket agent request from user: {request.user_id}")
-        
-        from src.agents.ticket_agent import TicketManagementAgent
+        logger.info(f"Request from user: {request.user_id}")
+        logger.info(f"Message: {request.message}")
         
         ticket_agent = TicketManagementAgent(db_session=db)
         
-        # Run with timeout protection
         loop = asyncio.get_event_loop()
         response = await asyncio.wait_for(
             loop.run_in_executor(
                 None,
                 ticket_agent.process_message,
                 request.message,
-                request.user_id,
-                request.user_role
+                request.user_id
             ),
             timeout=90
         )
         
-        return {
-            "success": True,
-            "response": response
-        }
+        return ChatResponse(
+            success=True,
+            response=response["response"],
+            token_usage=response["token_usage"],
+            cost_info=response["cost_info"]
+        )
         
     except asyncio.TimeoutError:
         logger.error("Request timeout")
-        raise HTTPException(
-            status_code=504,
-            detail="Request processing timed out"
-        )
-    except Exception as e:
-        logger.error(f"Error in ticket agent endpoint: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error: {str(e)}"
-        )
+        return JSONResponse(
+            content={
+                "success": False,
+                "response": "Request timeout",
+                "token_usage": {},
+                "cost_info": {},
 
-@app.post("/api/admin/user-management")
-async def admin_user_management(
-    request: ChatRequest,
-    db: Session = Depends(get_db)
-):
-    """Admin-only user management agent"""
-    try:
-        logger.info(f"User management request from: {request.user_id}")
-    
-        if request.user_role != "admin":
-            raise HTTPException(
-                status_code=403,
-                detail="Access denied. Admin privileges required."
-            )
-        
-        user_agent = UserRegistrationAgent(db_session=db)
-        
-        loop = asyncio.get_event_loop()
-        response = await asyncio.wait_for(
-            loop.run_in_executor(
-                None,
-                user_agent.process_message,
-                request.message,
-                request.user_id,
-                request.user_role
-            ),
-            timeout=30
+            },
+            status_code=504
         )
-        
-        return {
-            "success": True,
-            "response": response
-        }
-        
-    except HTTPException:
-        raise
-    except asyncio.TimeoutError:
-        logger.error("Request timeout")
-        raise HTTPException(status_code=504, detail="Request processing timed out")
     except Exception as e:
-        logger.error(f"Error in user management endpoint: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        logger.error(f"Error: {str(e)}", exc_info=True)
+        return JSONResponse(
+            content={
+                "success": False,
+                "response": f"Error: {str(e)}",
+                "token_usage": {},
+                "cost_info": {},
+
+            },
+            status_code=500
+        )
     
