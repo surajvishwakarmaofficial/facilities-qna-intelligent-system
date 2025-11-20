@@ -476,7 +476,7 @@ class TicketManagementAgent:
                             response += f"### {idx}. Ticket {ticket['ticket_id']}\n\n"
                             
                             if 'user_id' in ticket:
-                                response += f"- 👤 **User:** {ticket['user_id']}\n"
+                                response += f"**User:** {ticket['user_id']}\n"
                             
                             response += f"**Status:** {ticket['status']}\n"
                             response += f"**Priority:** {ticket['priority']}\n"
