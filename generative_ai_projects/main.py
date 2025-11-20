@@ -377,6 +377,38 @@ class ChatResponse(BaseModel):
     token_usage: dict
     cost_info: dict
     
+#NOTE: this api for testing purpose only need login from ui (not needed for agent flow)
+@app.post("/api/login", response_model=LoginResponse)
+async def login(request: LoginRequest, db: Session = Depends(get_db)):
+    user = authenticate_user(db, request.username, request.password)
+
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    access_token = create_access_token(
+        data={"sub": user.username}
+    )
+    data = {
+        "status": 200,
+        "message": "Login successful",
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "full_name": user.full_name,
+            "role": user.role,
+
+        },
+        "access_token": access_token,
+        "token_type": "bearer",
+    }
+
+    return data
+
 
 @app.post("/api/v1/ticket_agent", response_model=ChatResponse)
 async def chat_with_ticket_agent(
@@ -433,3 +465,302 @@ async def chat_with_ticket_agent(
             status_code=500
         )
     
+
+#=== FILE UPLOAD and QNA API ===
+from fastapi import FastAPI, Request, HTTPException, Depends
+from typing import Optional, List
+import os
+import traceback
+
+from src.rag.rag_core import FacilitiesRAGSystem
+from config.constant_config import Config
+import dotenv
+
+dotenv.load_dotenv()
+
+rag_system = None
+
+def get_rag_system() -> FacilitiesRAGSystem:
+    """Get or initialize RAG system"""
+    global rag_system
+    if rag_system is None:
+        print("[API] Initializing RAG system...")
+        rag_system = FacilitiesRAGSystem(knowledge_base_dir=Config.KNOWLEDGE_BASE_DIR)
+        success = rag_system.initialize_clients(silent=False)
+        if not success:
+            raise RuntimeError("Failed to initialize RAG system")
+        print("[API] RAG system initialized successfully")
+
+    return rag_system
+
+class FileUploadResponse(BaseModel):
+    """Response model for file upload"""
+    success: bool
+    message: str
+    filename: str
+    s3_url: Optional[str] = None
+    s3_key: Optional[str] = None
+    file_size_kb: Optional[float] = None
+    chunks_added: Optional[int] = None
+    total_chunks: Optional[int] = None
+    timestamp: str
+
+class ChatRequest(BaseModel):
+    """Request model for chat Q&A"""
+    message: str
+class SourceInfo(BaseModel):
+    """Source document information"""
+    title: str
+    source: str
+    content: str
+    file_type: str
+    s3_url: Optional[str] = None
+
+
+class TokenUsage(BaseModel):
+    """Token usage information"""
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
+class ChatResponse(BaseModel):
+    """Response model for chat Q&A"""
+    success: bool
+    message: str
+    response: str
+    sources: List[SourceInfo]
+    token_usage: TokenUsage
+    timestamp: str
+    
+# ==================== Helper Classes ====================
+
+class FormFileWrapper:
+    """Wrapper to make form file compatible with process_file"""
+    def __init__(self, filename: str, content: bytes):
+        self.name = filename
+        self.filename = filename
+        self._content = content
+    
+    def getbuffer(self):
+        return self._content
+    
+    def seek(self, pos):
+        pass
+
+
+@app.post("/api/v1/upload_knowledgebase_file", response_model=FileUploadResponse, tags=["Documentsknowledgebase"])
+async def upload_document(request: Request):
+    """
+    Upload and process document for knowledge base
+    
+    **Form-data required:**
+    - file: The document file (PDF, CSV, Excel, TXT)
+    
+    **Returns:**
+    - Success status
+    - S3 presigned URL
+    - Chunks added information
+    """
+    print("File upload request received")
+    
+    try:
+        system = get_rag_system()
+        
+        form = await request.form()
+        
+        if "file" not in form:
+            raise HTTPException(
+                status_code=400,
+                detail="No file provided. Please upload a file with key 'file' in form-data"
+            )
+        
+        uploaded_file = form["file"]
+        
+        if not hasattr(uploaded_file, 'filename'):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid file object in form-data"
+            )
+        
+        filename = uploaded_file.filename
+        print(f"[API_UPLOAD] Received file: {filename}")
+        
+        file_ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+        if file_ext not in system.supported_formats:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": f"Unsupported file format: .{file_ext}",
+                    "supported_formats": list(system.supported_formats.keys())
+                }
+            )
+        
+        file_content = await uploaded_file.read()
+        file_size_bytes = len(file_content)
+        file_size_kb = file_size_bytes / 1024
+        
+        print(f"[API_UPLOAD] File size: {file_size_kb:.2f} KB")
+        
+        if file_size_bytes == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Uploaded file is empty (0 bytes)"
+            )
+        
+        wrapped_file = FormFileWrapper(filename, file_content)
+        
+        print(f"[API_UPLOAD] Processing file...")
+        result = system.process_file(wrapped_file)
+        
+        if isinstance(result, dict):
+            success = result.get("success", False)
+            s3_url = result.get("s3_url")
+            s3_key = result.get("s3_key")
+            chunks_added = result.get("chunks_added", 0)
+            total_chunks = result.get("total_chunks", 0)
+            
+            if not success:
+                error_msg = result.get("error", "File processing failed")
+                raise HTTPException(status_code=500, detail=error_msg)
+        else:
+            success = result
+            if not success:
+                raise HTTPException(
+                    status_code=500,
+                    detail="File processing failed. Check server logs."
+                )
+            
+            stats_after = system.vector_store.get_collection_stats()
+            chunks_added = 0
+            total_chunks = stats_after.get("num_entities", 0) if stats_after else 0
+            s3_url = None
+            s3_key = None
+        
+        print(f"[API_UPLOAD] Upload successful!")
+        print(f"[API_UPLOAD] S3 URL: {s3_url}")
+        return FileUploadResponse(
+            success=True,
+            message="Document uploaded and processed successfully",
+            filename=filename,
+            s3_url=s3_url,
+            s3_key=s3_key,
+            file_size_kb=round(file_size_kb, 2),
+            chunks_added=chunks_added,
+            total_chunks=total_chunks,
+            timestamp=datetime.utcnow().isoformat()
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[API_UPLOAD] Error: {str(e)}")
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Internal server error during file upload",
+                "message": str(e)
+            }
+        )
+
+def count_tokens(text: str) -> int:
+    """Estimate token count (rough approximation: 1 token ≈ 4 characters)"""
+    return len(text) // 4
+
+@app.post("/api/v1/facility_qna", response_model=ChatResponse, tags=["Chatqna"])
+async def chat_query(request: ChatRequest):
+    """
+    Ask a question to the facilities management assistant
+    
+    **Request body:**
+    - message: The question to ask
+    
+    **Returns:**
+    - Answer to the query
+    - Source documents used
+    - Token usage information
+    """
+    print("\n" + "="*60)
+    print(f"[API_CHAT] Query received: {request.message}")
+    print("="*60)
+    
+    try:
+        system = get_rag_system()
+        
+        if not request.message or len(request.message.strip()) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Message cannot be empty"
+            )
+        
+        if not system.vectorstore:
+            raise HTTPException(
+                status_code=400,
+                detail="Knowledge base not initialized. Please upload documents first."
+            )
+        
+        print("Generating response")
+        result = system.generate_response(request.message)
+        
+        if result.get("error"):
+            raise HTTPException(
+                status_code=500,
+                detail=result.get("answer", "Failed to generate response")
+            )
+        
+        answer = result.get("answer", "")
+        source_docs = result.get("sources", [])
+
+        sources = []
+        for doc in source_docs:
+            sources.append(SourceInfo(
+                title=doc.metadata.get("title", "Unknown"),
+                source=doc.metadata.get("source", "Unknown"),
+                content=doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content,
+                file_type=doc.metadata.get("file_type", "unknown"),
+                s3_url=doc.metadata.get("s3_url")
+            ))
+        
+        retrieved_docs = system.retrieve_relevant_info(request.message)
+        context = "\n\n".join([doc.page_content for doc in retrieved_docs])
+        
+        prompt_text = f"{context}\n\nQuestion: {request.message}"
+        prompt_tokens = count_tokens(prompt_text)
+        completion_tokens = count_tokens(answer)
+        total_tokens = prompt_tokens + completion_tokens
+        
+        token_usage = TokenUsage(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens
+        )
+        
+        print(f"[API_CHAT] Response generated successfully")
+        print(f"[API_CHAT] Token usage: {total_tokens} tokens")
+        print(f"[API_CHAT] Sources: {len(sources)} documents")
+        print("="*60 + "\n")
+        
+        return ChatResponse(
+            success=True,
+            message="Query processed successfully",
+            response=answer,
+            sources=sources,
+            token_usage=token_usage,
+            timestamp=datetime.utcnow().isoformat(),
+
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[API_CHAT] Error: {str(e)}")
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Internal server error during query processing",
+                "message": str(e)
+            }
+        )
+

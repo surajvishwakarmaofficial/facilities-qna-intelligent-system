@@ -20,6 +20,7 @@ from src.rag.vector_store import MilvusStore
 from src.rag.retriever import KnowledgeRetriever
 import dotenv
 from config.constant_config import Config
+from src.database.s3_config import S3Uploader
 
 dotenv.load_dotenv()
 
@@ -29,15 +30,14 @@ class FacilitiesRAGSystem:
     """RAG System for Facilities Management"""
 
     def __init__(self, knowledge_base_dir: str):
-        print("code reached rag_core init")
+        print("=== [RAG_CORE] Initializing FacilitiesRAGSystem ===")
         self.knowledge_base_dir = knowledge_base_dir
-        self.collection_name = Config.COLLECTION_NAME
+        self.collection_name = Config.MILVUS_COLLECTION_NAME
         self.embedding_function = None
         self.vectorstore = None
         self.llm = None
         self.chat_history = []
         
-        # Initialize modular components
         self.chunker = DocumentChunker(chunk_size=500, chunk_overlap=50)
         self.embedding_manager = EmbeddingManager()
         self.vector_store = None
@@ -50,236 +50,391 @@ class FacilitiesRAGSystem:
             'xls': self._process_excel_file,
             'txt': self._process_text_file,
         }
+        print(f"[RAG_CORE] Supported formats: {list(self.supported_formats.keys())}")
 
     def initialize_clients(self, silent=False):
         """Initializes LLM/Embedding clients and Milvus connection."""
+        print("[RAG_CORE] initialize_clients() called")
+        
         if self.llm and self.embedding_function:
+            print("[RAG_CORE] Clients already initialized, checking collection...")
             if utility.has_collection(self.collection_name):
+                connection_args = {
+                    "host": Config.MILVUS_HOST,
+                    "port": Config.MILVUS_PORT,
+                }
+                if Config.MILVUS_DATABASE:
+                    connection_args["db_name"] = Config.MILVUS_DATABASE
+                
                 self.vectorstore = Milvus(
                     embedding_function=self.embedding_function,
                     collection_name=self.collection_name,
-                    connection_args={"uri": Config.MILVUS_URI, "token": Config.MILVUS_TOKEN},
+                    connection_args=connection_args,
                     auto_id=True
                 )
+                print("[RAG_CORE] Vectorstore connected to existing collection")
             return True
 
-        # Initialize using embedding manager
+        print("[RAG_CORE] Initializing embedding function and LLM...")
         self.embedding_function, self.llm = self.embedding_manager.initialize()
         
         if not self.embedding_function or not self.llm:
-            if not silent:
-                st.error("Failed to initialize LLM or embedding function.")
+            print("[ERROR] Failed to initialize LLM or embedding function")
             return False
 
-        # Initialize vector store
+        print("[RAG_CORE] Creating MilvusStore connection...")
         self.vector_store = MilvusStore(
-            uri=Config.MILVUS_URI,
-            token=Config.MILVUS_TOKEN,
+            host=Config.MILVUS_HOST,
+            port=Config.MILVUS_PORT,
+            database=Config.MILVUS_DATABASE,
             collection_name=self.collection_name,
-            embedding_function=self.embedding_function
+            embedding_function=self.embedding_function,
+
         )
         
         if not self.vector_store.connect(silent=silent):
+            print("[ERROR] MilvusStore connection failed")
             return False
         
-        # Load existing collection
         if self.vector_store.load_collection(silent=silent):
             self.vectorstore = self.vector_store.get_vectorstore()
-            
-            # Initialize retriever
             self.retriever = KnowledgeRetriever(self.vector_store, k=3)
+            print("[RAG_CORE] Collection loaded successfully, retriever initialized")
             return True
         else:
             self.vectorstore = None
             if not silent:
-                st.warning("No existing knowledge base found.")
+                print("[WARNING] No existing knowledge base found")
             return True
 
     def rebuild_knowledge_base_from_directory(self):
         """Admin function: Rebuild entire knowledge base from scratch"""
-        st.info(f"Starting knowledge base rebuild from directory: {self.knowledge_base_dir}")
+        print(f"=== [RAG_CORE] Starting knowledge base rebuild from directory: {self.knowledge_base_dir} ===")
         
         if not self.embedding_function or not self.llm:
+            print("[RAG_CORE] Initializing LLM clients for rebuild...")
             self.embedding_function, self.llm = setup_llm_clients()
             if not self.embedding_function or not self.llm:
-                st.error("Failed to initialize LLM or embedding function.")
+                print("[ERROR] Failed to initialize LLM or embedding function")
                 return False
         
         try:
-            connections.connect(alias="default", uri=Config.MILVUS_URI, token=Config.MILVUS_TOKEN)
+            print("[RAG_CORE] Connecting to Milvus...")
+            connections.connect(
+                alias="default",
+                host=Config.MILVUS_HOST,
+                port=Config.MILVUS_PORT,
+            )
         except Exception as e:
-            st.error(f"Error connecting to Milvus: {str(e)}")
+            print(f"[ERROR] Error connecting to Milvus: {str(e)}")
             return False
         
         if utility.has_collection(self.collection_name):
+            print(f"[RAG_CORE] Dropping existing collection '{self.collection_name}'...")
             utility.drop_collection(self.collection_name)
-            st.info(f"Collection '{self.collection_name}' dropped for a fresh start.")
         
         all_documents = []
         if not os.path.isdir(self.knowledge_base_dir):
-            st.error(f"Error: Knowledge base directory not found at {self.knowledge_base_dir}")
+            print(f"[ERROR] Knowledge base directory not found at {self.knowledge_base_dir}")
             return False
 
+        print(f"[RAG_CORE] Scanning directory for files...")
         for root, _, files in os.walk(self.knowledge_base_dir):
             for file_name in files:
                 file_path = os.path.join(root, file_name)
                 file_ext = self._get_file_extension(file_name)
                 if file_ext in self.supported_formats:
+                    print(f"[RAG_CORE] Processing file: {file_name}")
                     processor = self.supported_formats[file_ext]
                     processed_docs = processor(file_path, file_name)
                     if processed_docs:
                         all_documents.extend(processed_docs)
+                        print(f"[RAG_CORE] Added {len(processed_docs)} documents from {file_name}")
         
         if not all_documents:
-            st.error("No documents were processed from the directory.")
-            return False
+            print("[ERROR] No documents were processed from the directory")
+            return {
+                "success": False,
+                "message": "No documents were processed from the directory.",
+                "num_documents": 0,
+                "s3_url": None,
 
-        # Use chunker
+            }
+
+        print(f"[RAG_CORE] Total documents collected: {len(all_documents)}")
+        print("[RAG_CORE] Chunking documents...")
         splits = self.chunker.chunk_documents(all_documents)
+        print(f"[RAG_CORE] Generated {len(splits)} chunks")
 
+        connection_args = {
+            "host": Config.MILVUS_HOST,
+            "port": Config.MILVUS_PORT,
+        }
+        if Config.MILVUS_DATABASE:
+            connection_args["db_name"] = Config.MILVUS_DATABASE
+
+        print("[RAG_CORE] Creating Milvus collection from documents...")
         self.vectorstore = Milvus.from_documents(
             documents=splits,
             embedding=self.embedding_function,
             collection_name=self.collection_name,
-            connection_args={"uri": Config.MILVUS_URI, "token": Config.MILVUS_TOKEN},
+            connection_args=connection_args,
         )
         
         try:
             collection = Collection(self.collection_name)
             collection.load()
             num_entities = collection.num_entities
-            st.success(f"Successfully rebuilt knowledge base with {num_entities} chunks from {len(splits)} processed chunks.")
+            print(f"=== [SUCCESS] Knowledge base rebuilt with {num_entities} chunks ===")
         except Exception as e:
-            st.warning(f"Collection created but verification failed: {str(e)}")
+            print(f"[WARNING] Collection created but verification failed: {str(e)}")
         
         return True
 
     def process_file(self, uploaded_file):
         """ADMIN ACTION: Add new document to existing knowledge base"""
+        print(f"\n=== [PROCESS_FILE] Starting file processing: {uploaded_file.name} ===")
         temp_file_path = os.path.join(".", uploaded_file.name)
+        s3_url = None 
         
         try:
             if not self.embedding_function or not self.llm:
-                st.error("System not initialized")
-                return False
+                print("[ERROR] System not initialized")
+                return {
+                    "success": False,
+                    "message": "System not initialized. Please initialize clients first.",
+                    "s3_url": None,
+
+                }
             
             if utility.has_collection(self.collection_name):
-                st.info("Connecting to collection...")
+                print("[PROCESS_FILE] Connecting to existing collection...")
+                connection_args = {
+                    "host": Config.MILVUS_HOST,
+                    "port": Config.MILVUS_PORT,
+                }
+                if Config.MILVUS_DATABASE:
+                    connection_args["db_name"] = Config.MILVUS_DATABASE
+                
                 self.vectorstore = Milvus(
                     embedding_function=self.embedding_function,
                     collection_name=self.collection_name,
-                    connection_args={"uri": Config.MILVUS_URI, "token": Config.MILVUS_TOKEN},
+                    connection_args=connection_args,
                     auto_id=True
                 )
             
             file_ext = self._get_file_extension(uploaded_file.name)
             if file_ext not in self.supported_formats:
-                st.error(f"Unsupported file format: .{file_ext}")
-                st.info("Supported formats: PDF, CSV, Excel, TXT")
-                return False
+                print(f"[ERROR] Unsupported file format: .{file_ext}")                 
+                return {
+                    "success": False,
+                    "message": f"Unsupported file format: .{file_ext}. Supported formats: {list(self.supported_formats.keys())}",
+                    "s3_url": None,
 
+                }
+            
+            # Step 1: Save file locally
+            print("[PROCESS_FILE] Step 1: Saving file to disk...")
             with open(temp_file_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
+                f.flush()
+                os.fsync(f.fileno())
             
-            with st.spinner(f"Processing {uploaded_file.name}..."):
-                processor = self.supported_formats[file_ext]
-                processed_documents = processor(temp_file_path, uploaded_file.name)
+            # Step 2: Verify file
+            if not os.path.exists(temp_file_path):
+                print("[ERROR] Temporary file was not created")
+                return {
+                    "success": False,
+                    "message": "Temporary file was not created.",
+                    "s3_url": None,
+
+                }
             
+            file_size = os.path.getsize(temp_file_path)
+            if file_size == 0:
+                print("[ERROR] Temporary file is empty (0 bytes)")
+                return {
+                    "success": False,
+                    "message": "Temporary file is empty (0 bytes).",
+                    "s3_url": None,
+
+                }
+            
+            print(f"[SUCCESS] File saved locally: {file_size / 1024:.2f} KB")
+            
+            # Step 3: Upload to S3
+            print("[PROCESS_FILE] Step 2: Uploading to S3...")
+            s3_uploader = S3Uploader()
+            import datetime
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            s3_object_name = f"uploads/{timestamp}_{uploaded_file.name}"
+            
+            s3_url = s3_uploader.upload_file_and_get_url(
+                temp_file_path, 
+                object_name=s3_object_name,
+                expiration=86400,
+            )
+            
+            if not s3_url:
+                print("[ERROR] S3 upload failed, s3_url is None")
+                return {
+                    "success": False,
+                    "message": "S3 upload failed.",
+                    "s3_url": None,
+
+                }
+            
+            print(f"[SUCCESS] File stored in S3")
+            print(f"[S3_URL] {s3_url}")
+            
+            # Step 4: Process file content
+            print(f"[PROCESS_FILE] Step 3: Processing {file_ext.upper()} content...")
+            processor = self.supported_formats[file_ext]
+            processed_documents = processor(temp_file_path, uploaded_file.name)
+
             if not processed_documents:
-                st.error("No content extracted from file")
-                return False
+                print("[ERROR] No content extracted from file")
+                return {
+                    "success": False,
+                    "message": "No content extracted from file.",
+                    "s3_url": None,
+
+                }
             
-            st.success(f"Extracted {len(processed_documents)} pages/sections")
+            print(f"[SUCCESS] Extracted {len(processed_documents)} pages/sections")
             
-            with st.spinner("Creating document chunks..."):
-                # Use chunker
-                splits = self.chunker.chunk_documents(processed_documents)
+            # Step 5: Add S3 metadata
+            print("[PROCESS_FILE] Step 4: Adding S3 metadata to documents...")
+            for doc in processed_documents:
+                doc.metadata["s3_url"] = s3_url
+                doc.metadata["s3_object_key"] = s3_object_name
+            
+            # Step 6: Chunk documents
+            print("[PROCESS_FILE] Step 5: Creating document chunks...")
+            splits = self.chunker.chunk_documents(processed_documents)
             
             if not splits:
-                st.error("Failed to create document chunks")
+                print("[ERROR] Failed to create document chunks")
                 return False
             
-            st.info(f"Generated {len(splits)} chunks")
+            print(f"[SUCCESS] Generated {len(splits)} chunks")
             
+            # Add S3 metadata to chunks
+            for chunk in splits:
+                chunk.metadata["s3_url"] = s3_url
+                chunk.metadata["s3_object_key"] = s3_object_name
+            
+            # Step 7: Store in vector database
             if self.vectorstore is None:
-                with st.spinner("Creating new collection..."):
-                    self.vectorstore = Milvus.from_documents(
-                        documents=splits,
-                        embedding=self.embedding_function,
-                        collection_name=self.collection_name,
-                        connection_args={"uri": Config.MILVUS_URI, "token": Config.MILVUS_TOKEN},
-                    )
-                    
-                    collection = Collection(self.collection_name)
-                    collection.load()
-                    num_entities = collection.num_entities
+                print("[PROCESS_FILE] Step 6: Creating new Milvus collection...")
+                connection_args = {
+                    "host": Config.MILVUS_HOST,
+                    "port": Config.MILVUS_PORT,
+                }
+                if Config.MILVUS_DATABASE:
+                    connection_args["db_name"] = Config.MILVUS_DATABASE
                 
-                st.success(f"Created collection with {num_entities} chunks")
-                return True
-            
-            with st.spinner(f"Uploading {len(splits)} chunks to database..."):
+                self.vectorstore = Milvus.from_documents(
+                    documents=splits,
+                    embedding=self.embedding_function,
+                    collection_name=self.collection_name,
+                    connection_args=connection_args,
+                )
+                
                 collection = Collection(self.collection_name)
                 collection.load()
-                count_before = collection.num_entities
+                num_entities = collection.num_entities
                 
-                st.info(f"Current document count: {count_before}")
+                print(f"=== [SUCCESS] New collection created with {num_entities} chunks ===")
+                print(f"[S3_URL] {s3_url}")
+                return {
+                    "success": True,
+                    "message": f"New collection created with {num_entities} chunks.",
+                    "s3_url": s3_url,
+
+                }
+            
+            # Step 8: Add to existing collection
+            print(f"[PROCESS_FILE] Step 6: Uploading {len(splits)} chunks to existing collection...")
+            collection = Collection(self.collection_name)
+            collection.load()
+            count_before = collection.num_entities
+            print(f"[INFO] Current document count: {count_before}")
+            
+            added_ids = self.vectorstore.add_documents(documents=splits)
+            
+            if not added_ids:
+                print("[ERROR] Upload failed: No IDs returned")
+                return {
+                    "success": False,
+                    "message": "Upload failed: No IDs returned.",
+                    "s3_url": s3_url,
+                    "num_documents": len(splits),
+
+                }
+            
+            print(f"[INFO] Received {len(added_ids)} IDs from upload")
+            
+            try:
+                collection.flush()
+                print("[INFO] Data persisted to database")
+            except Exception as flush_error:
+                print(f"[WARNING] Flush warning: {flush_error}")
+            
+            time.sleep(2)
+            
+            collection.load()
+            count_after = collection.num_entities
+            print(f"[INFO] Updated document count: {count_after}")
+            
+            actual_added = count_after - count_before
+            
+            if actual_added > 0:
+                print(f"[SUCCESS] Added {actual_added} new chunks (Total: {count_before} → {count_after})")
                 
-                added_ids = self.vectorstore.add_documents(documents=splits)
+                # Test searchability
+                test_query = splits[0].page_content[:50]
+                retriever = self.vectorstore.as_retriever(search_kwargs={"k": 1})
+                test_results = retriever.invoke(test_query)
                 
-                if not added_ids:
-                    st.error("Upload failed: No IDs returned")
-                    return False
+                if test_results:
+                    print("[SUCCESS] New documents are searchable")
                 
-                st.info(f"Received {len(added_ids)} IDs from upload")
-                
-                try:
-                    collection.flush()
-                    st.info("Data persisted to database")
-                except Exception as flush_error:
-                    st.warning(f"Flush warning: {flush_error}")
-                
-                time.sleep(2)
-                
-                collection.load()
-                count_after = collection.num_entities
-                
-                st.info(f"Updated document count: {count_after}")
-                
-                actual_added = count_after - count_before
-                
-                if actual_added > 0:
-                    st.success(f"Successfully added {actual_added} new chunks")
-                    st.success(f"Total documents: {count_before} to {count_after}")
-                    
-                    test_query = splits[0].page_content[:50]
-                    retriever = self.vectorstore.as_retriever(search_kwargs={"k": 1})
-                    test_results = retriever.invoke(test_query)
-                    
-                    if test_results:
-                        st.success("New documents are searchable")
-                    
-                    return True
-                else:
-                    st.error(f"Upload verification failed: Document count unchanged ({count_before})")
-                    st.error(f"IDs returned: {len(added_ids)}, Expected: {len(splits)}, Actual: {actual_added}")
-                    return False
+                print("=== [SUCCESS] Document successfully processed and uploaded ===")
+                print(f"[S3_URL] {s3_url}")
+                return {
+                    "success": True,
+                    "message": f"Added {actual_added} new chunks (Total: {count_before} : {count_after})",
+                    "s3_url": s3_url,
+                    "num_documents": actual_added,
+
+                }
+            else:
+                print(f"[ERROR] Upload verification failed: Document count unchanged ({count_before})")
+                return {
+                    "success": False,
+                    "message": "Upload verification failed: Document count unchanged.",
+                    "s3_url": s3_url,
+                    "num_documents": 0,
+
+                }
             
         except Exception as e:
-            st.error(f"Error: {str(e)}")
+            print(f"[ERROR] Exception occurred: {str(e)}")
             import traceback
-            with st.expander("Debug Information"):
-                st.code(traceback.format_exc())
+            print("[TRACEBACK]")
+            print(traceback.format_exc())
             return False
         finally:
             if os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
+                print(f"[CLEANUP] Removed temporary file: {temp_file_path}")
     
     def retrieve_relevant_info(self, query: str, k: int = 3):
         """Retrieve relevant information from all documents"""
         if self.retriever:
             return self.retriever.retrieve(query, k=k)
         
-        # Fallback to original logic
         try:
             if self.vectorstore and utility.has_collection(self.collection_name):
                 collection = Collection(self.collection_name)
@@ -289,7 +444,7 @@ class FacilitiesRAGSystem:
             relevant_docs = retriever.invoke(query)
             return relevant_docs
         except Exception as e:
-            st.error(f"Error retrieving documents: {str(e)}")
+            print(f"[ERROR] Error retrieving documents: {str(e)}")
             return []
 
     def generate_response_stream(self, query: str):
@@ -347,7 +502,7 @@ class FacilitiesRAGSystem:
             }
 
         except Exception as e:
-            st.error(f"Error generating streaming response: {str(e)}")
+            print(f"[ERROR] Error generating streaming response: {str(e)}")
             def exception_stream():
                 yield f"Sorry, I encountered an error: {str(e)}"
             return {
@@ -404,7 +559,7 @@ class FacilitiesRAGSystem:
                 "error": False
             }
         except Exception as e:
-            st.error(f"Error generating response: {str(e)}")
+            print(f"[ERROR] Error generating response: {str(e)}")
             return {
                 "answer": f"Sorry, I encountered an error: {str(e)}",
                 "sources": [],
@@ -417,30 +572,24 @@ class FacilitiesRAGSystem:
     def _process_pdf_file(self, temp_file_path: str, filename: str) -> List[Document]:
         """Process PDF with image detection"""
         try:
+            print(f"[PDF_PROCESSOR] Loading PDF: {filename}")
             loader = PyPDFLoader(temp_file_path)
             documents = loader.load()
             
             if not documents:
-                st.error(f"PDF contains no pages: {filename}")
+                print(f"[ERROR] PDF contains no pages: {filename}")
                 return []
             
-            # Image detection
             total_text_length = sum(len(doc.page_content.strip()) for doc in documents)
             avg_text_per_page = total_text_length / len(documents) if documents else 0
             
+            print(f"[PDF_PROCESSOR] Pages: {len(documents)}, Avg text/page: {avg_text_per_page:.2f} chars")
+            
             if avg_text_per_page < 50:
-                st.error("Image-Based PDF Detected")
-                st.markdown("""
-                    <div style="background: #fff3cd; padding: 1rem; border-radius: 8px; border-left: 4px solid #ffc107;">
-                        <h4 style="color: #856404; margin-top: 0;">This PDF contains images instead of text</h4>
-                        <p style="color: #856404;"><strong>Solution:</strong> Convert to text-based PDF using OCR tools (Adobe Acrobat, Google Drive)</p>
-                        <p style="color: #856404;"><strong>Test:</strong> Open PDF and try to select text with your cursor</p>
-                        <p style="color: #856404;"><strong>Alternative:</strong> Upload as TXT, CSV, or Excel file</p>
-                    </div>
-                """, unsafe_allow_html=True)
+                print("[ERROR] Image-based PDF detected (avg < 50 chars/page)")
+                print("[INFO] Solution: Convert to text-based PDF using OCR tools")
                 return []
             
-            # Process text-based PDF
             processed_documents = []
             
             for idx, doc in enumerate(documents):
@@ -463,17 +612,19 @@ class FacilitiesRAGSystem:
                 processed_documents.append(processed_doc)
             
             if not processed_documents:
-                st.error(f"No readable text found in {filename}")
+                print(f"[ERROR] No readable text found in {filename}")
                 return []
             
+            print(f"[PDF_PROCESSOR] Successfully processed {len(processed_documents)} pages")
             return processed_documents
             
         except Exception as e:
-            st.error(f"Error processing PDF: {str(e)}")
+            print(f"[ERROR] Error processing PDF: {str(e)}")
             return []
 
     def _process_csv_file(self, temp_file_path: str, filename: str) -> List[Document]:
         try:
+            print(f"[CSV_PROCESSOR] Loading CSV: {filename}")
             df = pd.read_csv(temp_file_path)
             processed_documents = []
             for idx, row in df.iterrows():
@@ -489,16 +640,19 @@ class FacilitiesRAGSystem:
                 }
                 processed_doc = Document(page_content=content, metadata=new_metadata)
                 processed_documents.append(processed_doc)
+            print(f"[CSV_PROCESSOR] Successfully processed {len(processed_documents)} rows")
             return processed_documents
         except Exception as e:
-            st.error(f"Error processing CSV: {str(e)}")
+            print(f"[ERROR] Error processing CSV: {str(e)}")
             return []
     
     def _process_excel_file(self, temp_file_path: str, filename: str) -> List[Document]:
         try:
+            print(f"[EXCEL_PROCESSOR] Loading Excel: {filename}")
             excel_file = pd.ExcelFile(temp_file_path)
             processed_documents = []
             for sheet_name in excel_file.sheet_names:
+                print(f"[EXCEL_PROCESSOR] Processing sheet: {sheet_name}")
                 df = pd.read_excel(temp_file_path, sheet_name=sheet_name)
                 for idx, row in df.iterrows():
                     content_parts = [f"Sheet: {sheet_name}"] + [f"{col}: {value}" for col, value in row.items() if pd.notna(value)]
@@ -514,13 +668,15 @@ class FacilitiesRAGSystem:
                     }
                     processed_doc = Document(page_content=content, metadata=new_metadata)
                     processed_documents.append(processed_doc)
+            print(f"[EXCEL_PROCESSOR] Successfully processed {len(processed_documents)} rows across {len(excel_file.sheet_names)} sheets")
             return processed_documents
         except Exception as e:
-            st.error(f"Error processing Excel: {str(e)}")
+            print(f"[ERROR] Error processing Excel: {str(e)}")
             return []
     
     def _process_text_file(self, temp_file_path: str, filename: str) -> List[Document]:
         try:
+            print(f"[TXT_PROCESSOR] Loading text file: {filename}")
             with open(temp_file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
         except UnicodeDecodeError:
@@ -528,7 +684,7 @@ class FacilitiesRAGSystem:
                 with open(temp_file_path, 'r', encoding='latin-1') as f:
                     content = f.read()
             except Exception as e:
-                st.error(f"Error processing text file: {str(e)}")
+                print(f"[ERROR] Error processing text file: {str(e)}")
                 return []
         
         paragraphs = content.split('\n\n')
@@ -545,5 +701,6 @@ class FacilitiesRAGSystem:
                 }
                 processed_doc = Document(page_content=paragraph.strip(), metadata=new_metadata)
                 processed_documents.append(processed_doc)
+        print(f"[TXT_PROCESSOR] Successfully processed {len(processed_documents)} paragraphs")
         return processed_documents
-
+    
