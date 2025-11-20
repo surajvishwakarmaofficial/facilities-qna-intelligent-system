@@ -233,14 +233,12 @@ class FacilitiesRAGSystem:
 
                 }
             
-            # Step 1: Save file locally
             print("[PROCESS_FILE] Step 1: Saving file to disk...")
             with open(temp_file_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
                 f.flush()
                 os.fsync(f.fileno())
             
-            # Step 2: Verify file
             if not os.path.exists(temp_file_path):
                 print("[ERROR] Temporary file was not created")
                 return {
@@ -259,11 +257,7 @@ class FacilitiesRAGSystem:
                     "s3_url": None,
 
                 }
-            
-            print(f"[SUCCESS] File saved locally: {file_size / 1024:.2f} KB")
-            
-            # Step 3: Upload to S3
-            print("[PROCESS_FILE] Step 2: Uploading to S3...")
+                        
             s3_uploader = S3Uploader()
             import datetime
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -276,7 +270,6 @@ class FacilitiesRAGSystem:
             )
             
             if not s3_url:
-                print("[ERROR] S3 upload failed, s3_url is None")
                 return {
                     "success": False,
                     "message": "S3 upload failed.",
@@ -284,11 +277,6 @@ class FacilitiesRAGSystem:
 
                 }
             
-            print(f"[SUCCESS] File stored in S3")
-            print(f"[S3_URL] {s3_url}")
-            
-            # Step 4: Process file content
-            print(f"[PROCESS_FILE] Step 3: Processing {file_ext.upper()} content...")
             processor = self.supported_formats[file_ext]
             processed_documents = processor(temp_file_path, uploaded_file.name)
 
@@ -300,33 +288,22 @@ class FacilitiesRAGSystem:
                     "s3_url": None,
 
                 }
-            
-            print(f"[SUCCESS] Extracted {len(processed_documents)} pages/sections")
-            
-            # Step 5: Add S3 metadata
-            print("[PROCESS_FILE] Step 4: Adding S3 metadata to documents...")
+    
             for doc in processed_documents:
                 doc.metadata["s3_url"] = s3_url
                 doc.metadata["s3_object_key"] = s3_object_name
             
-            # Step 6: Chunk documents
-            print("[PROCESS_FILE] Step 5: Creating document chunks...")
             splits = self.chunker.chunk_documents(processed_documents)
             
             if not splits:
-                print("[ERROR] Failed to create document chunks")
                 return False
-            
-            print(f"[SUCCESS] Generated {len(splits)} chunks")
-            
-            # Add S3 metadata to chunks
+                    
             for chunk in splits:
                 chunk.metadata["s3_url"] = s3_url
                 chunk.metadata["s3_object_key"] = s3_object_name
             
-            # Step 7: Store in vector database
             if self.vectorstore is None:
-                print("[PROCESS_FILE] Step 6: Creating new Milvus collection...")
+                print("Creating new Milvus collection...")
                 connection_args = {
                     "host": Config.MILVUS_HOST,
                     "port": Config.MILVUS_PORT,
@@ -346,7 +323,6 @@ class FacilitiesRAGSystem:
                 num_entities = collection.num_entities
                 
                 print(f"=== [SUCCESS] New collection created with {num_entities} chunks ===")
-                print(f"[S3_URL] {s3_url}")
                 return {
                     "success": True,
                     "message": f"New collection created with {num_entities} chunks.",
@@ -354,17 +330,13 @@ class FacilitiesRAGSystem:
 
                 }
             
-            # Step 8: Add to existing collection
-            print(f"[PROCESS_FILE] Step 6: Uploading {len(splits)} chunks to existing collection...")
             collection = Collection(self.collection_name)
             collection.load()
             count_before = collection.num_entities
-            print(f"[INFO] Current document count: {count_before}")
             
             added_ids = self.vectorstore.add_documents(documents=splits)
             
             if not added_ids:
-                print("[ERROR] Upload failed: No IDs returned")
                 return {
                     "success": False,
                     "message": "Upload failed: No IDs returned.",
@@ -372,36 +344,29 @@ class FacilitiesRAGSystem:
                     "num_documents": len(splits),
 
                 }
-            
-            print(f"[INFO] Received {len(added_ids)} IDs from upload")
-            
+                        
             try:
                 collection.flush()
-                print("[INFO] Data persisted to database")
+                print("Data persisted to database")
             except Exception as flush_error:
-                print(f"[WARNING] Flush warning: {flush_error}")
+                print(f"Flush warning: {flush_error}")
             
             time.sleep(2)
             
             collection.load()
-            count_after = collection.num_entities
-            print(f"[INFO] Updated document count: {count_after}")
-            
+            count_after = collection.num_entities            
             actual_added = count_after - count_before
             
-            if actual_added > 0:
-                print(f"[SUCCESS] Added {actual_added} new chunks (Total: {count_before} → {count_after})")
-                
-                # Test searchability
+            if actual_added > 0:                
                 test_query = splits[0].page_content[:50]
                 retriever = self.vectorstore.as_retriever(search_kwargs={"k": 1})
                 test_results = retriever.invoke(test_query)
                 
                 if test_results:
-                    print("[SUCCESS] New documents are searchable")
+                    print("New documents are searchable")
                 
-                print("=== [SUCCESS] Document successfully processed and uploaded ===")
-                print(f"[S3_URL] {s3_url}")
+                print("===== Document successfully processed and uploaded =====")
+                print(f"s3_url: {s3_url}")
                 return {
                     "success": True,
                     "message": f"Added {actual_added} new chunks (Total: {count_before} : {count_after})",
@@ -410,7 +375,6 @@ class FacilitiesRAGSystem:
 
                 }
             else:
-                print(f"[ERROR] Upload verification failed: Document count unchanged ({count_before})")
                 return {
                     "success": False,
                     "message": "Upload verification failed: Document count unchanged.",
@@ -420,15 +384,12 @@ class FacilitiesRAGSystem:
                 }
             
         except Exception as e:
-            print(f"[ERROR] Exception occurred: {str(e)}")
             import traceback
-            print("[TRACEBACK]")
             print(traceback.format_exc())
             return False
         finally:
             if os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
-                print(f"[CLEANUP] Removed temporary file: {temp_file_path}")
     
     def retrieve_relevant_info(self, query: str, k: int = 3):
         """Retrieve relevant information from all documents"""
@@ -444,7 +405,7 @@ class FacilitiesRAGSystem:
             relevant_docs = retriever.invoke(query)
             return relevant_docs
         except Exception as e:
-            print(f"[ERROR] Error retrieving documents: {str(e)}")
+            print(f"Error retrieving documents: {str(e)}")
             return []
 
     def generate_response_stream(self, query: str):
@@ -502,7 +463,6 @@ class FacilitiesRAGSystem:
             }
 
         except Exception as e:
-            print(f"[ERROR] Error generating streaming response: {str(e)}")
             def exception_stream():
                 yield f"Sorry, I encountered an error: {str(e)}"
             return {
@@ -550,20 +510,34 @@ class FacilitiesRAGSystem:
             response = self.llm.invoke(prompt)
             answer = response.content
 
+            token_usage = None
+            if hasattr(response, 'response_metadata'):
+                usage = response.response_metadata.get('token_usage', {})
+                if usage:
+                    token_usage = {
+                        "prompt_tokens": usage.get('prompt_tokens', 0),
+                        "completion_tokens": usage.get('completion_tokens', 0),
+                        "total_tokens": usage.get('total_tokens', 0)
+                    }
+
             self.chat_history.append({"role": "user", "content": query})
             self.chat_history.append({"role": "assistant", "content": answer})
 
             return {
                 "answer": answer,
                 "sources": relevant_docs,
-                "error": False
+                "token_usage": token_usage,
+                "error": False,
+
             }
         except Exception as e:
             print(f"[ERROR] Error generating response: {str(e)}")
             return {
                 "answer": f"Sorry, I encountered an error: {str(e)}",
                 "sources": [],
-                "error": True
+                "token_usage": None,
+                "error": True,
+                
             }
 
     def _get_file_extension(self, filename: str) -> str:

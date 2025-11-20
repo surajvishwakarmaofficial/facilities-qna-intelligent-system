@@ -40,7 +40,7 @@ class DatabaseConnection:
         """Create all database tables"""
         Base.metadata.create_all(bind=self.engine)
         
-        print("✓ Database tables created")
+        print("====== Database is activated and tables are created ======")
 
 
 # Global database connection instance

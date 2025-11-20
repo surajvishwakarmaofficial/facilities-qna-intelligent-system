@@ -1,44 +1,46 @@
 import asyncio
 import os
-from fastapi import FastAPI, HTTPException, Depends
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Optional
+import json
+import logging
+import traceback
 from datetime import datetime, timedelta
-from jose import jwt
 
-from src.llm.litellm_client import LiteLLMClient
-from src.database.session import DatabaseManager
-from sqlalchemy.orm import Session
-from src.database.models import Ticket, TicketHistory, ChatHistory
+# Third-party imports
 import dotenv
-from passlib.context import CryptContext
-
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from src.database.models import User, Ticket, Base
 import bcrypt
 import litellm
-from config.constant_config import Config
-from src.utils.constants import (
-    PREDEFINED_USERS,
-    
-)
-from typing import Optional, List
+from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBasic
+from jose import jwt
+from passlib.context import CryptContext
+from sqlalchemy.orm import Session
 
-import json
-from fastapi import Depends, HTTPException
-from sqlalchemy.orm import Session
-import asyncio
-import logging
-from pydantic import BaseModel
+# Local imports - Database
+from src.database.session import DatabaseManager
+from src.database.models import User, Ticket, TicketHistory
+from src.database.states_schema import *
+
+# Local imports - Services/Agents
+from src.llm.litellm_client import LiteLLMClient
 from src.agents.ticket_agent import TicketManagementAgent
-import json
-from typing import Optional, List
-from pydantic import BaseModel
-from fastapi import HTTPException, Depends
-from sqlalchemy.orm import Session
-from datetime import datetime
+from src.rag.rag_core import FacilitiesRAGSystem
+
+# Local imports - Config
+from config.constant_config import Config
+from src.utils.constants import PREDEFINED_USERS
+
+from fastapi import FastAPI, HTTPException, Depends
+from datetime import datetime, timedelta
+from sqlalchemy import or_, and_
+
+# Add these imports to your existing main.py
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+from src.utils.utils import FormFileWrapper
+from src.utils.constants import *
+
 
 
 logger = logging.getLogger(__name__)
@@ -60,7 +62,7 @@ litellm.set_verbose = True
 dotenv.load_dotenv()
 
 
-app = FastAPI(title="YASH Facilities AI API")
+app = FastAPI(title="Facilities qna AI API")
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -97,20 +99,6 @@ def authenticate_user(db: Session, username: str, password: str):
     if not user or not verify_password(password, user.hashed_password):
         return None
     return user
-
-# === AUTH APIs ===
-class RegisterRequest(BaseModel):
-    username: str
-    email: str
-    full_name: str
-    password: str
-
-
-import re
-
-class LoginRequest(BaseModel):
-    username: str
-    password: str
 
 
 @app.on_event("startup")
@@ -149,99 +137,6 @@ async def create_default_users():
     finally:
         db.close()
 
-from pydantic import BaseModel
-from typing import Optional
-
-class UserResponse(BaseModel):
-    id: str
-    username: str
-    email: str
-    full_name: Optional[str] = None
-    role: str
-
-class LoginResponse(BaseModel):
-    user: UserResponse
-    access_token: str
-    token_type: str = "bearer"
-
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
-from pydantic import BaseModel
-from typing import Optional, List
-from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_
-
-# Add these imports to your existing main.py
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.interval import IntervalTrigger
-
-class TicketStatus:
-    OPEN = "Open"
-    ASSIGNED = "Assigned"
-    IN_PROGRESS = "In Progress"
-    ON_HOLD = "On Hold"
-    ESCALATED = "Escalated"
-    RESOLVED = "Resolved"
-    CLOSED = "Closed"
-    
-    ALL_STATUSES = [OPEN, ASSIGNED, IN_PROGRESS, ON_HOLD, ESCALATED, RESOLVED, CLOSED]
-
-class TicketPriority:
-    LOW = "Low"
-    MEDIUM = "Medium"
-    HIGH = "High"
-    CRITICAL = "Critical"
-    
-    ALL_PRIORITIES = [LOW, MEDIUM, HIGH, CRITICAL]
-
-# Escalation thresholds (in hours)
-ESCALATION_THRESHOLDS = {
-    "Low": 0.0333,      # 2 minutes (for testing)
-    "Medium": 0.0333,   # 2 minutes (for testing)
-    "High": 0.0333,     # 2 minutes (for testing)
-    "Critical": 0.0333  # 2 minutes (for testing)
-}
-
-
-class TicketCreateRequest(BaseModel):
-    user_id: str
-    category: str
-    description: str
-    priority: str = "Medium"
-
-class TicketUpdateRequest(BaseModel):
-    status: Optional[str] = None
-    priority: Optional[str] = None
-    assigned_to: Optional[str] = None
-    resolution_notes: Optional[str] = None
-
-class TicketResponse(BaseModel):
-    ticket_id: str
-    user_id: str
-    category: str
-    description: str
-    priority: str
-    status: str
-    escalated: bool
-    escalation_level: int
-    assigned_to: Optional[str] = None
-    age_hours: float
-    hours_until_escalation: float
-    created_at: str
-    updated_at: Optional[str] = None
-    last_action_at: str
-    resolved_at: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
-
-class TicketListResponse(BaseModel):
-    total: int
-    tickets: List[TicketResponse]
 
 
 def check_and_escalate_tickets(db: Session):
@@ -309,7 +204,7 @@ async def start_scheduler():
             replace_existing=True
         )
         scheduler.start()
-        print("✓ Auto-escalation scheduler started (runs every 5 minutes)")
+        
 
 @app.on_event("shutdown")
 async def shutdown_scheduler():
@@ -357,25 +252,6 @@ def format_ticket_response(ticket: Ticket) -> TicketResponse:
         resolved_at=ticket.resolved_at.isoformat() if ticket.resolved_at else None
     )
 
-class SaveChatHistoryRequest(BaseModel):
-    user_id: str
-    conversation_id: Optional[str] = None
-    title: Optional[str] = None
-    messages: List[dict]
-
-class UpdateTitleRequest(BaseModel):
-    title: str
-
-
-class ChatRequest(BaseModel):
-    user_id: str
-    message: str
-
-class ChatResponse(BaseModel):
-    success: bool
-    response: str
-    token_usage: dict
-    cost_info: dict
     
 #NOTE: this api for testing purpose only need login from ui (not needed for agent flow)
 @app.post("/api/login", response_model=LoginResponse)
@@ -466,18 +342,6 @@ async def chat_with_ticket_agent(
         )
     
 
-#=== FILE UPLOAD and QNA API ===
-from fastapi import FastAPI, Request, HTTPException, Depends
-from typing import Optional, List
-import os
-import traceback
-
-from src.rag.rag_core import FacilitiesRAGSystem
-from config.constant_config import Config
-import dotenv
-
-dotenv.load_dotenv()
-
 rag_system = None
 
 def get_rag_system() -> FacilitiesRAGSystem:
@@ -492,62 +356,7 @@ def get_rag_system() -> FacilitiesRAGSystem:
         print("[API] RAG system initialized successfully")
 
     return rag_system
-
-class FileUploadResponse(BaseModel):
-    """Response model for file upload"""
-    success: bool
-    message: str
-    filename: str
-    s3_url: Optional[str] = None
-    s3_key: Optional[str] = None
-    file_size_kb: Optional[float] = None
-    chunks_added: Optional[int] = None
-    total_chunks: Optional[int] = None
-    timestamp: str
-
-class ChatRequest(BaseModel):
-    """Request model for chat Q&A"""
-    message: str
-class SourceInfo(BaseModel):
-    """Source document information"""
-    title: str
-    source: str
-    content: str
-    file_type: str
-    s3_url: Optional[str] = None
-
-
-class TokenUsage(BaseModel):
-    """Token usage information"""
-    prompt_tokens: int
-    completion_tokens: int
-    total_tokens: int
-
-
-class ChatResponse(BaseModel):
-    """Response model for chat Q&A"""
-    success: bool
-    message: str
-    response: str
-    sources: List[SourceInfo]
-    token_usage: TokenUsage
-    timestamp: str
     
-# ==================== Helper Classes ====================
-
-class FormFileWrapper:
-    """Wrapper to make form file compatible with process_file"""
-    def __init__(self, filename: str, content: bytes):
-        self.name = filename
-        self.filename = filename
-        self._content = content
-    
-    def getbuffer(self):
-        return self._content
-    
-    def seek(self, pos):
-        pass
-
 
 @app.post("/api/v1/upload_knowledgebase_file", response_model=FileUploadResponse, tags=["Documentsknowledgebase"])
 async def upload_document(request: Request):
@@ -667,7 +476,6 @@ async def upload_document(request: Request):
 def count_tokens(text: str) -> int:
     """Estimate token count (rough approximation: 1 token ≈ 4 characters)"""
     return len(text) // 4
-
 @app.post("/api/v1/facility_qna", response_model=ChatResponse, tags=["Chatqna"])
 async def chat_query(request: ChatRequest):
     """
@@ -700,7 +508,7 @@ async def chat_query(request: ChatRequest):
                 detail="Knowledge base not initialized. Please upload documents first."
             )
         
-        print("Generating response")
+        print("Generating response...")
         result = system.generate_response(request.message)
         
         if result.get("error"):
@@ -711,6 +519,7 @@ async def chat_query(request: ChatRequest):
         
         answer = result.get("answer", "")
         source_docs = result.get("sources", [])
+        llm_token_usage = result.get("token_usage", None)
 
         sources = []
         for doc in source_docs:
@@ -722,23 +531,23 @@ async def chat_query(request: ChatRequest):
                 s3_url=doc.metadata.get("s3_url")
             ))
         
-        retrieved_docs = system.retrieve_relevant_info(request.message)
-        context = "\n\n".join([doc.page_content for doc in retrieved_docs])
+        if llm_token_usage:
+            token_usage = TokenUsage(
+                prompt_tokens=llm_token_usage.get("prompt_tokens", 0),
+                completion_tokens=llm_token_usage.get("completion_tokens", 0),
+                total_tokens=llm_token_usage.get("total_tokens", 0)
+            )
+            print(f"token usage: {token_usage.total_tokens} tokens")
+        else:
+            token_usage = TokenUsage(
+                prompt_tokens=0,
+                completion_tokens=0,
+                total_tokens=0
+            )
+            print("No token usage info from LLM")
         
-        prompt_text = f"{context}\n\nQuestion: {request.message}"
-        prompt_tokens = count_tokens(prompt_text)
-        completion_tokens = count_tokens(answer)
-        total_tokens = prompt_tokens + completion_tokens
-        
-        token_usage = TokenUsage(
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            total_tokens=total_tokens
-        )
-        
-        print(f"[API_CHAT] Response generated successfully")
-        print(f"[API_CHAT] Token usage: {total_tokens} tokens")
-        print(f"[API_CHAT] Sources: {len(sources)} documents")
+        print(f"Response generated successfully")
+        print(f"Sources: {len(sources)} documents")
         print("="*60 + "\n")
         
         return ChatResponse(
@@ -754,7 +563,7 @@ async def chat_query(request: ChatRequest):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[API_CHAT] Error: {str(e)}")
+        print(f"Error: {str(e)}")
         print(traceback.format_exc())
         raise HTTPException(
             status_code=500,

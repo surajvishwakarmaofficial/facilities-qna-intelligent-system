@@ -46,3 +46,31 @@ PREDEFINED_USERS = [
     },
 
 ]
+
+class TicketStatus:
+    OPEN = "Open"
+    ASSIGNED = "Assigned"
+    IN_PROGRESS = "In Progress"
+    ON_HOLD = "On Hold"
+    ESCALATED = "Escalated"
+    RESOLVED = "Resolved"
+    CLOSED = "Closed"
+    
+    ALL_STATUSES = [OPEN, ASSIGNED, IN_PROGRESS, ON_HOLD, ESCALATED, RESOLVED, CLOSED]
+
+class TicketPriority:
+    LOW = "Low"
+    MEDIUM = "Medium"
+    HIGH = "High"
+    CRITICAL = "Critical"
+    
+    ALL_PRIORITIES = [LOW, MEDIUM, HIGH, CRITICAL]
+
+# Escalation thresholds (in hours)
+ESCALATION_THRESHOLDS = {
+    "Low": 0.0333,      # 2 minutes (for testing)
+    "Medium": 0.0333,   # 2 minutes (for testing)
+    "High": 0.0333,     # 2 minutes (for testing)
+    "Critical": 0.0333  # 2 minutes (for testing)
+}
+
