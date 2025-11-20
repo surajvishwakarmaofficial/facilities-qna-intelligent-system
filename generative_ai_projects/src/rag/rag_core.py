@@ -89,7 +89,7 @@ class FacilitiesRAGSystem:
             database=Config.MILVUS_DATABASE,
             collection_name=self.collection_name,
             embedding_function=self.embedding_function,
-            
+
         )
         
         if not self.vector_store.connect(silent=silent):
@@ -153,7 +153,13 @@ class FacilitiesRAGSystem:
         
         if not all_documents:
             print("[ERROR] No documents were processed from the directory")
-            return False
+            return {
+                "success": False,
+                "message": "No documents were processed from the directory.",
+                "num_documents": 0,
+                "s3_url": None,
+
+            }
 
         print(f"[RAG_CORE] Total documents collected: {len(all_documents)}")
         print("[RAG_CORE] Chunking documents...")
@@ -194,7 +200,12 @@ class FacilitiesRAGSystem:
         try:
             if not self.embedding_function or not self.llm:
                 print("[ERROR] System not initialized")
-                return False
+                return {
+                    "success": False,
+                    "message": "System not initialized. Please initialize clients first.",
+                    "s3_url": None,
+
+                }
             
             if utility.has_collection(self.collection_name):
                 print("[PROCESS_FILE] Connecting to existing collection...")
@@ -214,9 +225,13 @@ class FacilitiesRAGSystem:
             
             file_ext = self._get_file_extension(uploaded_file.name)
             if file_ext not in self.supported_formats:
-                print(f"[ERROR] Unsupported file format: .{file_ext}")
-                print(f"[INFO] Supported formats: {list(self.supported_formats.keys())}")
-                return False
+                print(f"[ERROR] Unsupported file format: .{file_ext}")                 
+                return {
+                    "success": False,
+                    "message": f"Unsupported file format: .{file_ext}. Supported formats: {list(self.supported_formats.keys())}",
+                    "s3_url": None,
+
+                }
             
             # Step 1: Save file locally
             print("[PROCESS_FILE] Step 1: Saving file to disk...")
@@ -228,12 +243,22 @@ class FacilitiesRAGSystem:
             # Step 2: Verify file
             if not os.path.exists(temp_file_path):
                 print("[ERROR] Temporary file was not created")
-                return False
+                return {
+                    "success": False,
+                    "message": "Temporary file was not created.",
+                    "s3_url": None,
+
+                }
             
             file_size = os.path.getsize(temp_file_path)
             if file_size == 0:
                 print("[ERROR] Temporary file is empty (0 bytes)")
-                return False
+                return {
+                    "success": False,
+                    "message": "Temporary file is empty (0 bytes).",
+                    "s3_url": None,
+
+                }
             
             print(f"[SUCCESS] File saved locally: {file_size / 1024:.2f} KB")
             
@@ -252,7 +277,12 @@ class FacilitiesRAGSystem:
             
             if not s3_url:
                 print("[ERROR] S3 upload failed, s3_url is None")
-                return False
+                return {
+                    "success": False,
+                    "message": "S3 upload failed.",
+                    "s3_url": None,
+
+                }
             
             print(f"[SUCCESS] File stored in S3")
             print(f"[S3_URL] {s3_url}")
@@ -264,7 +294,12 @@ class FacilitiesRAGSystem:
 
             if not processed_documents:
                 print("[ERROR] No content extracted from file")
-                return False
+                return {
+                    "success": False,
+                    "message": "No content extracted from file.",
+                    "s3_url": None,
+
+                }
             
             print(f"[SUCCESS] Extracted {len(processed_documents)} pages/sections")
             
@@ -312,7 +347,12 @@ class FacilitiesRAGSystem:
                 
                 print(f"=== [SUCCESS] New collection created with {num_entities} chunks ===")
                 print(f"[S3_URL] {s3_url}")
-                return True
+                return {
+                    "success": True,
+                    "message": f"New collection created with {num_entities} chunks.",
+                    "s3_url": s3_url,
+
+                }
             
             # Step 8: Add to existing collection
             print(f"[PROCESS_FILE] Step 6: Uploading {len(splits)} chunks to existing collection...")
@@ -325,7 +365,13 @@ class FacilitiesRAGSystem:
             
             if not added_ids:
                 print("[ERROR] Upload failed: No IDs returned")
-                return False
+                return {
+                    "success": False,
+                    "message": "Upload failed: No IDs returned.",
+                    "s3_url": s3_url,
+                    "num_documents": len(splits),
+
+                }
             
             print(f"[INFO] Received {len(added_ids)} IDs from upload")
             
@@ -355,14 +401,23 @@ class FacilitiesRAGSystem:
                     print("[SUCCESS] New documents are searchable")
                 
                 print("=== [SUCCESS] Document successfully processed and uploaded ===")
-                print(f"[S3_BUCKET] {os.getenv('S3_BUCKET_NAME')}")
-                print(f"[S3_KEY] {s3_object_name}")
                 print(f"[S3_URL] {s3_url}")
-                return True
+                return {
+                    "success": True,
+                    "message": f"Added {actual_added} new chunks (Total: {count_before} : {count_after})",
+                    "s3_url": s3_url,
+                    "num_documents": actual_added,
+
+                }
             else:
                 print(f"[ERROR] Upload verification failed: Document count unchanged ({count_before})")
-                print(f"[ERROR] IDs returned: {len(added_ids)}, Expected: {len(splits)}, Actual: {actual_added}")
-                return False
+                return {
+                    "success": False,
+                    "message": "Upload verification failed: Document count unchanged.",
+                    "s3_url": s3_url,
+                    "num_documents": 0,
+
+                }
             
         except Exception as e:
             print(f"[ERROR] Exception occurred: {str(e)}")
