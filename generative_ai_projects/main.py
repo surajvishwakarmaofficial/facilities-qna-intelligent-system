@@ -49,10 +49,14 @@ logger = logging.getLogger(__name__)
 from src.database import (
     db_connection,
     get_db,
+    get_db_manager,
     User,
     Ticket,
     TicketHistory,
     ChatHistory,
+    engine,
+    SessionLocal,
+
 
 )
 
@@ -71,12 +75,14 @@ security = HTTPBasic()
 llm_client = LiteLLMClient()
 
 
-db_manager = DatabaseManager(Config.SQLITE_DB_URL)
+db_manager = get_db_manager()
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 db_connection.create_tables()
+
+db_manager = get_db_manager()
 
 
 # === AUTH DEPENDENCY ===
@@ -316,7 +322,8 @@ def get_rag_system() -> FacilitiesRAGSystem:
     global rag_system
     if rag_system is None:
         print("[API] Initializing RAG system...")
-        rag_system = FacilitiesRAGSystem(knowledge_base_dir=Config.KNOWLEDGE_BASE_DIR)
+        kb_dir = Config.KNOWLEDGE_BASE_DIR if hasattr(Config, 'KNOWLEDGE_BASE_DIR') else None
+        rag_system = FacilitiesRAGSystem(knowledge_base_dir=kb_dir)
         success = rag_system.initialize_clients(silent=False)
         if not success:
             raise RuntimeError("Failed to initialize RAG system")

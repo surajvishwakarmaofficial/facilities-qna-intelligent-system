@@ -37,6 +37,9 @@ class Config:
     GREETING_LLM_TEMP = os.environ.get("GREETING_LLM_TEMP")
     MAX_TOKENS = os.environ.get("MAX_TOKENS")
     LLM_TEMP = os.environ.get("LLM_TEMP")
+
+    DATABASE_URL = os.getenv("DATABASE_URL","")
+
     
 
     

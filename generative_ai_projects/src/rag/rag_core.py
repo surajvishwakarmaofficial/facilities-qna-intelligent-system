@@ -111,6 +111,15 @@ class FacilitiesRAGSystem:
         """Admin function: Rebuild entire knowledge base from scratch"""
         print(f"=== [RAG_CORE] Starting knowledge base rebuild from directory: {self.knowledge_base_dir} ===")
         
+        if not self.knowledge_base_dir or not os.path.isdir(self.knowledge_base_dir):
+            print("[INFO] No knowledge base directory configured or found")
+            return {
+                "success": False,
+                "message": "No knowledge base directory configured. Use API upload instead.",
+                "num_documents": 0,
+                "s3_url": None,
+            }
+        
         if not self.embedding_function or not self.llm:
             print("[RAG_CORE] Initializing LLM clients for rebuild...")
             self.embedding_function, self.llm = setup_llm_clients()

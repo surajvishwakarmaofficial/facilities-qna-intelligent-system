@@ -1,10 +1,6 @@
-"""
-Database Module
-"""
-
 from .models import Base, User, Ticket, TicketHistory, ChatHistory
 from .session import DatabaseManager
-from .db_connection import db_connection, get_db, get_db_manager
+from .db_connection import db_connection, get_db, get_db_manager, engine, SessionLocal
 
 __all__ = [
     "Base",
@@ -16,6 +12,7 @@ __all__ = [
     "db_connection",
     "get_db",
     "get_db_manager",
-
+    "engine",
+    "SessionLocal",
+    
 ]
-

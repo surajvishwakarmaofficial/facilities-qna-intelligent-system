@@ -46,5 +46,7 @@ streamlit-cookies-manager<=0.2.0
 apscheduler>=3.11.1
 psycopg2==2.9.11
 boto3==1.41.0
+SQLAlchemy==2.0.44
+psycopg2-binary==2.9.9
 
 
