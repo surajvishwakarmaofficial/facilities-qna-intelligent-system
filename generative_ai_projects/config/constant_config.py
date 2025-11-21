@@ -29,4 +29,14 @@ class Config:
     AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "")
     AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
 
+    AZURE_ENDPOINT = os.environ.get("AZURE_ENDPOINT")
+    AZURE_API_KEY = os.environ.get("AZURE_API_KEY")
+    AZURE_API_VERSION = os.environ.get("AZURE_API_VERSION")
+    AZURE_DEPLOYMENT = os.environ.get("AZURE_DEPLOYMENT") 
+    AZURE_EMBEDDING_DEPLOYMENT = os.environ.get("AZURE_EMBEDDING_DEPLOYMENT") 
+    GREETING_LLM_TEMP = os.environ.get("GREETING_LLM_TEMP")
+    MAX_TOKENS = os.environ.get("MAX_TOKENS")
+    LLM_TEMP = os.environ.get("LLM_TEMP")
+    
+
     
