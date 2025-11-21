@@ -253,39 +253,6 @@ def format_ticket_response(ticket: Ticket) -> TicketResponse:
     )
 
     
-#NOTE: this api for testing purpose only need login from ui (not needed for agent flow)
-@app.post("/api/login", response_model=LoginResponse)
-async def login(request: LoginRequest, db: Session = Depends(get_db)):
-    user = authenticate_user(db, request.username, request.password)
-
-    if not user:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    access_token = create_access_token(
-        data={"sub": user.username}
-    )
-    data = {
-        "status": 200,
-        "message": "Login successful",
-        "user": {
-            "id": user.id,
-            "username": user.username,
-            "email": user.email,
-            "full_name": user.full_name,
-            "role": user.role,
-
-        },
-        "access_token": access_token,
-        "token_type": "bearer",
-    }
-
-    return data
-
-
 @app.post("/api/v1/ticket_agent", response_model=ChatResponse)
 async def chat_with_ticket_agent(
     request: ChatRequest,
